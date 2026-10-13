@@ -125,6 +125,24 @@ class MockProvider(Provider):
             media.run(["-i", source, "-i", card, "-filter_complex", "[0:v][1:v]overlay=W-w-16:16,format=yuv420p",
                        "-an", "-c:v", "libx264", "-preset", "veryfast", out])
             files.append(str(out))
+        elif kind == "talking_head":
+            audio = Path(body["audio_file"])
+            seconds = media.probe(audio)["duration"]
+            with Image.open(body["image"]) as im:
+                size = (max(2, min(720, im.width) // 2 * 2), max(2, int(min(720, im.width) * im.height / im.width) // 2 * 2))
+            card = placeholder("talking", size, workdir / f"{stem}.png", "MOCK PRESENTER", base=Path(body["image"]))
+            silent = media.still_to_clip(card, workdir / f"{stem}-silent.mp4", seconds, size, "zoom_in", max_hold=999)
+            out = workdir / f"{stem}.mp4"
+            media.run(["-i", silent, "-i", audio, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-shortest", out])
+            files.append(str(out))
+        elif kind == "lipsync":
+            audio = Path(body["audio_file"])
+            seconds = media.probe(audio)["duration"]
+            out = workdir / f"{stem}.mp4"
+            media.run(["-stream_loop", "-1", "-i", body["video"], "-i", audio, "-map", "0:v", "-map", "1:a",
+                       "-t", f"{seconds:.3f}", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                       "-c:a", "aac", out])
+            files.append(str(out))
         elif kind == "tts":
             words = max(1, len(prompt.split()))
             seconds = round(words / 2.6 + 0.4, 2)

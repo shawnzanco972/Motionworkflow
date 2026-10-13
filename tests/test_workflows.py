@@ -253,6 +253,7 @@ class VoiceAndCliTests(IsolatedTest):
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
             code = cli.main(["--json", "image", "a pigeon", "--model", "mock:image", "-n", "2"])
         cli.JSON_OUTPUT = False
+        jobs.listeners.clear()
         self.assertEqual(code, 0)
         data = json.loads(buf.getvalue())
         self.assertEqual(data["state"], "done")

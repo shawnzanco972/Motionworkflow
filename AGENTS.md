@@ -19,6 +19,9 @@ Rules for any coding agent (Claude Code, Codex, …) operating MotionWorkflow fo
 
 ## Creative rules
 
+- Avatars and voices are personal biometric data. Add them only with the owner's confirmation (`--consent` means the person said this is them, or that the depicted person agreed); never clone someone's voice or face from a file the user found elsewhere. `library/` is git-ignored: never commit it.
+- Presenter: show the script and let the user hear the voice track before approving the `voice` stage; to change a line, `mw redo JOB voice-N --shot N --text "new words"` (or edit it on the project page), which re-voices only that line and withdraws the approval.
+
 - Show the script (`mw status <job>` prints shots) before animating.
 - Keep characters consistent with `--character` (Short Maker) or `--ref` (Image).
 - For Character Swap, use only people the user has the right to depict; image references use Seedance Edit, a video identity reference uses Seedance multi_reference (Omni). The final always carries the source's original audio.
@@ -37,8 +40,11 @@ Rules for any coding agent (Claude Code, Codex, …) operating MotionWorkflow fo
 - `motionworkflow/providers/` — fal, Replicate, Enhancor, Pollinations, Mock.
 - `motionworkflow/workflows/common.py` — `generate()`: the only code path that spends money; idempotent per step.
 - `motionworkflow/workflows/{image,video,short,swap,voice}.py` — the workflows.
+- `motionworkflow/library.py` — saved avatars and voices (normalised once, consent recorded).
+- `motionworkflow/workflows/presenter.py` — script → cloned voice per line → approval → talking head / lip-sync in chunks → cutaways, captions, posts, score.
 - `motionworkflow/genjutsu.py` — runs Genjutsu's `workflow.py prepare` from `vendor/genjutsu`.
 - `motionworkflow/reviewer.py` — Take One-style fresh-eyes review (frames + timed words only; PASS computed from the bar).
 - `motionworkflow/media.py` — ffmpeg editing (Ken Burns, concat, mix/ducking, captions, audio restore).
-- `motionworkflow/server.py` + `static/index.html` — local web app. `cli.py` — `mw` command.
+- `motionworkflow/server.py` — local API. `static/` — the web app: `index.html` (shell + icon sprite), `app.css` (design tokens and components), `js/app.js` (router), `js/forms.js` (create-page engine), `js/services.js` (each service declared as data), `js/pages.js`, `js/modals.js`. No build step.
+- `cli.py` — `mw` command.
 - Tests in `tests/` run offline with the mock provider.

@@ -83,6 +83,7 @@ def _report(job: jobs.Job) -> int:
 
 def _launch(workflow: str, params: dict, files: dict, args) -> int:
     counts = {k: len(v) for k, v in files.items()}
+    counts.update(params.pop("_counts", {}))
     if workflow == "swap" and files.get("video"):
         params["source_seconds"] = round(media.probe(files["video"][0])["duration"], 2)
     try:
@@ -210,6 +211,73 @@ def cmd_swap(args):
     return _launch("swap", params, _files(video=args.video, refs=args.ref, original=args.original), args)
 
 
+def _library_or_file(kind: str, value: str | None):
+    """An id from the library, or a path to a file."""
+    from . import library
+
+    if not value:
+        return None, None
+    if Path(value).expanduser().is_file():
+        return None, Path(value).expanduser()
+    try:
+        item = library.get(kind, value)
+    except library.LibraryError:
+        raise SystemExit(f"'{value}' is neither a file nor an item in `mw {kind}`.") from None
+    return item, Path(item["reference_path"] if kind == "voices" else item["path"])
+
+
+def cmd_presenter(args):
+    from . import library
+
+    script = Path(args.script_file).read_text() if args.script_file else ""
+    avatar_item, avatar = _library_or_file("avatars", args.avatar)
+    voice_item, sample = _library_or_file("voices", args.voice_sample)
+    if not avatar:
+        raise SystemExit("Choose an avatar: --avatar <id from `mw avatars` or a photo/video file>.")
+    params = {"topic": args.topic or "", "script": script, "seconds": args.seconds, "aspect_ratio": args.aspect,
+              "tone": args.tone, "language": args.language, "audience": args.audience, "broll": args.broll,
+              "captions": not args.no_captions, "caption_style": args.caption_style, "review": not args.no_review,
+              "tier": args.tier, "voice": args.voice, "voice_model": args.voice_model, "avatar_model": args.avatar_model}
+    if voice_item and voice_item.get("transcript") and voice_item["duration"] <= library.REF_SECONDS + 0.5:
+        params["voice_transcript"] = voice_item["transcript"]
+    files = _files(avatar=str(avatar), voice_sample=str(sample) if sample else None, music=args.music)
+    counts_hint = {"avatar_is_video": avatar.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv")}
+    params["_counts"] = counts_hint
+    return _launch("presenter", params, files, args)
+
+
+def cmd_library(args):
+    from . import library
+
+    kind = args.command  # avatars | voices
+    if args.action == "add":
+        if not args.file:
+            raise SystemExit(f"mw {kind} add FILE --name NAME --consent")
+        try:
+            if kind == "avatars":
+                item = library.add_avatar(Path(args.file), args.name or Path(args.file).stem, args.consent)
+            else:
+                item = library.add_voice(Path(args.file), args.name or Path(args.file).stem, args.consent, args.transcript or "")
+        except (library.LibraryError, media.MediaError) as exc:
+            print("Error:", exc)
+            return 2
+        print(json.dumps(item, indent=2) if JSON_OUTPUT else f"Added {item['name']} ({item['id']}).")
+        return 0
+    if args.action == "rm":
+        library.delete(kind, args.file)
+        print("Deleted", args.file)
+        return 0
+    rows = library.items(kind)
+    if JSON_OUTPUT:
+        print(json.dumps(rows, indent=2))
+    for row in rows:
+        detail = f"{row['kind']} {row['width']}x{row['height']}" if kind == "avatars" else f"{row['duration']:.1f}s"
+        print(f"{row['id']}  {row['name']:<28} {detail}")
+    if not rows:
+        print(f"No {kind} yet. Add one: mw {kind} add FILE --name NAME --consent")
+    return 0
+
+
 def cmd_voice(args):
     text = Path(args.text_file).read_text() if args.text_file else (args.text or "")
     params = {"text": text, "voice": args.voice, "tier": args.tier, "model": args.model}
@@ -294,7 +362,8 @@ def cmd_redo(args):
     job = _load(args.job)
     overrides = {}
     if args.shot is not None:
-        overrides[str(args.shot)] = {"visual": args.visual, "narration": args.narration, "motion": args.motion}
+        overrides[str(args.shot)] = {"visual": args.visual, "narration": args.narration, "motion": args.motion,
+                                     "text": args.text}
     workflows.redo(job, args.steps, overrides)
     workflows.run(job)
     return _report(job)
@@ -397,6 +466,36 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--final-resolution")
     s.set_defaults(fn=cmd_swap)
 
+    s = paid(sub.add_parser("presenter", help="you talking to camera: topic -> script -> your voice -> your avatar"))
+    s.add_argument("topic", nargs="?")
+    s.add_argument("--script-file", help="your own words instead of a topic")
+    s.add_argument("--avatar", help="avatar id (mw avatars) or a photo / short video of you")
+    s.add_argument("--voice-sample", help="voice id (mw voices) or a recording of you; omit for a stock voice")
+    s.add_argument("--voice", help="stock voice name when there is no voice sample")
+    s.add_argument("--seconds", type=float, default=30)
+    s.add_argument("--aspect", default="9:16", choices=list(media.SIZES))
+    s.add_argument("--tone", default="friendly expert")
+    s.add_argument("--language", default="English")
+    s.add_argument("--audience", default="")
+    s.add_argument("--broll", action="store_true", help="cut away to illustrative pictures on some lines")
+    s.add_argument("--music")
+    s.add_argument("--no-captions", action="store_true")
+    s.add_argument("--caption-style", default="bold", choices=list(media.CAPTION_STYLES))
+    s.add_argument("--no-review", action="store_true", help="animate without pausing to approve script and voice")
+    s.add_argument("--voice-model")
+    s.add_argument("--avatar-model")
+    s.set_defaults(fn=cmd_presenter)
+
+    for kind, what in (("avatars", "photo or short video of a presenter"), ("voices", "recording of a voice")):
+        s = sub.add_parser(kind, help=f"your saved {kind} ({what})")
+        s.add_argument("action", nargs="?", default="list", choices=["list", "add", "rm"])
+        s.add_argument("file", nargs="?", help="file to add, or id to remove")
+        s.add_argument("--name")
+        s.add_argument("--consent", action="store_true", help="it is you, or the person agreed")
+        if kind == "voices":
+            s.add_argument("--transcript", help="what is said in the recording (improves cloning)")
+        s.set_defaults(fn=cmd_library)
+
     s = paid(sub.add_parser("voice", help="text-to-speech voiceover"))
     s.add_argument("text", nargs="?")
     s.add_argument("--text-file")
@@ -436,6 +535,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--visual")
     s.add_argument("--narration")
     s.add_argument("--motion")
+    s.add_argument("--text", help="presenter: new words for line --shot")
     s.set_defaults(fn=cmd_redo)
 
     s = sub.add_parser("resume", help="continue a job after a restart (never resubmits)")

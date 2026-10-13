@@ -13,8 +13,9 @@ It's plug-and-play: it runs end-to-end **today with no API keys** (free images +
 
 ## What you can make
 
-| Tab / command | What it does | Typical cost (budget tier) |
+| Page / command | What it does | Typical cost (budget tier) |
 |---|---|---|
+| **Presenter** · `mw presenter` | **You** talking to camera about any topic: Claude writes the script, it's spoken in **your cloned voice**, and **your photo or short video** is animated saying it, with captions, optional cutaways and posts | **~$1.70** per 30 s (photo) · **~$0.40** per 30 s (your video, lip-synced) |
 | **Short Maker** · `mw short` | Idea → script → keyframes → voiceover → captions → finished 9:16 MP4 + post caption/hashtags | **~$0.03** for 6 narrated slideshow shots · **~$0.15–1.50** animated |
 | **Image** · `mw image` | Text-to-image, batches, reference-image edits / consistent characters | **~$0.003** per image |
 | **Video** · `mw video` | Text-to-video or animate a still; optional cheap draft → approved premium final | **~$0.02–0.25** per clip |
@@ -47,6 +48,34 @@ Open **Settings** in the app (or edit `.env`). One key goes a long way:
 
 Run `.venv/bin/mw doctor` to see which models each tier will use with your keys.
 
+## The app
+
+`./start.sh` opens a local studio at http://127.0.0.1:8770 with one page per service:
+
+- **Home** — what's waiting for your approval, recent projects, a setup checklist and today's spend.
+- **Create** — Presenter, Short Maker, Image, Video, Voiceover, Character Swap. Each page is a short numbered form with a live price on the right, and shows where it will stop for your approval.
+- **Projects** — everything you've made, filterable by status and type. A project page plays the result, lets you approve the next step, edit and re-voice a single script line or redo a single shot, shows the reviewer's score, the parts, the files and the cost.
+- **Avatars & voices** — save your face (a photo, or 10-20 s of video looking at the camera) and your voice (record it in the browser reading a short text, or upload a file) once, and reuse them everywhere. Each needs a "this is me / they agreed" confirmation; they stay in `library/` on your computer.
+- **Settings** — API keys, budget limits and default tier, every model with its price, skill/tool status, light/dark theme.
+
+It works on a phone-sized window too (menu drawer, sticky price bar).
+
+## Your avatar and voice
+
+The Presenter video is built in two paid stages so you never pay to animate a bad take:
+
+1. **Script + voice** (cents): Claude writes a hook-first script for the length you pick (~2.3 words/s); each line is spoken in your cloned voice (Chatterbox or F5-TTS from your 10-20 s sample) or a stock voice. You listen, edit any line and **re-voice just that line**.
+2. **Your avatar talks** (the expensive part, after you approve): a **photo** is animated by a talking-head model (Kling AI Avatar, VEED Fabric, OmniHuman), or **your own short video** is lip-synced to the new audio (Sync Lipsync; most lifelike and cheapest). Long scripts are split at line breaks to fit each model's limit, then joined.
+
+Then captions, optional cutaway pictures on about one line in three, ducked music, `POSTS.md` and the fresh-eyes score. Only use your own face and voice, or someone's who agreed, and label AI-generated people when you post.
+
+```bash
+mw avatars add me.mp4 --name "Me, desk" --consent
+mw voices add my-voice.m4a --name "My voice" --consent --transcript "what I say in it"
+mw presenter "Why compound interest feels slow, then fast" --avatar <id> --voice-sample <id> --seconds 45
+mw approve <job>      # after listening to the voice track
+```
+
 ## Tiers
 
 Pick **Free / Budget / Standard / Premium** on any form. The app chooses the best model in that tier that you have a key for, falling back to cheaper tiers and finally to free/mock models so nothing breaks. You can also pick an exact model.
@@ -59,6 +88,9 @@ Pick **Free / Budget / Standard / Premium** on any form. The app chooses the bes
 | Image-to-video | LTX-Video, Wan 2.5 | Hailuo 02, Seedance Lite | Kling 2.5 Turbo, Veo 3.1 Fast |
 | Voice | Kokoro ~$0.02/1k chars | Kokoro | ElevenLabs Turbo v2.5 |
 | Swap | Wan 2.2 Animate Replace | Seedance 2.5 Edit (Enhancor) | Seedance 2.5 Edit |
+| Voice clone | Chatterbox ~$0.025/1k chars | F5-TTS ~$0.05/1k chars | F5-TTS |
+| Talking photo | Kling AI Avatar v2 Std ~$0.056/s | VEED Fabric ~$0.08/s | Kling Avatar Pro ~$0.115/s, OmniHuman 1.5 ~$0.16/s |
+| Lip-sync your video | Sync Lipsync 1.9 ~$0.012/s | Sync Lipsync 2.0 ~$0.05/s | Sync Lipsync 2.0 |
 
 ## Money safety
 

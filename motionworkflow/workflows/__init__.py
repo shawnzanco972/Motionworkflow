@@ -7,10 +7,11 @@ import traceback
 
 from .. import budget, jobs
 from ..jobs import DONE, ERROR, RUNNING, WAITING, Job
-from . import image, short, swap, video, voice
+from . import image, presenter, short, swap, video, voice
 from .common import StepFailed
 
-WORKFLOWS = {"image": image, "video": video, "short": short, "swap": swap, "voice": voice}
+WORKFLOWS = {"image": image, "video": video, "short": short, "swap": swap, "voice": voice,
+             "presenter": presenter}
 
 _active: set[str] = set()
 _active_lock = threading.Lock()
@@ -104,18 +105,29 @@ def redo(job: Job, step_keys: list[str], overrides: dict | None = None) -> None:
         if key.startswith("key-"):
             keys.add("clip-" + key[4:])  # a new keyframe needs a new animation
     for index, edits in overrides.items():
+        if edits.get("text"):  # presenter: a rewritten line is voiced again
+            keys.add(f"voice-{index}")
+        if "broll" in edits:
+            keys.add(f"broll-{index}")
         if edits.get("visual"):
             keys.update({f"key-{index}", f"clip-{index}"})
         if edits.get("motion"):
             keys.add(f"clip-{index}")
         if edits.get("narration"):
             keys.add(f"voice-{index}")
+    if any(k.startswith("voice-") for k in keys) and job.data.get("workflow") == "presenter":
+        # New words mean a new voice track, so every animated part is redone.
+        keys.update(k for k in steps if k.startswith("face-"))
+        job.path("voice.wav").unlink(missing_ok=True)
+        for old in job.path("assemble").glob("segment-*.wav") if job.path("assemble").exists() else []:
+            old.unlink()
+        job.data["outputs"] = [o for o in job.data.get("outputs", []) if o["path"] != "voice.wav"]
     for key in keys:
         steps.pop(key, None)
     if overrides:
         merged = job.params.setdefault("overrides", {})
         for index, edits in overrides.items():
-            merged.setdefault(index, {}).update({k: v for k, v in edits.items() if v})
+            merged.setdefault(index, {}).update({k: v for k, v in edits.items() if v or k == "broll"})
     if "plan" in keys:
         job.path("plan.json").unlink(missing_ok=True)
     if "prep" in keys:  # new Genjutsu prep: everything generated from the old one goes

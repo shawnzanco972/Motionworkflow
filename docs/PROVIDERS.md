@@ -57,6 +57,10 @@ Entries with an existing `id` are merged field by field; new ids are added. `def
 | `duration` | seconds, snapped to the model's `durations` (or `duration_range`) |
 | `resolution` | one of the model's `resolutions` |
 | `num_images`, `audio`, `text`, `voice` | batch size, generate sound, TTS text and voice |
+| `audio_file` | input audio for talking-head and lip-sync models |
+| `voice_sample`, `ref_text` | reference recording (and its transcript) for voice cloning |
+
+Kinds: `image`, `image_edit`, `video`, `image_to_video`, `swap`, `tts`, `voice_clone`, `talking_head` (photo + audio → video), `lipsync` (video + audio → video). `max_seconds` (talking head / lip-sync) and `max_chars` (voice) tell the workflows how to split long inputs.
 
 A mapping can be a field name (`"image": "image_url"`) or an object: `{"field": "image_size", "map": {"16:9": "landscape_16_9"}}`, `{"field": "duration", "type": "str", "suffix": "s"}`. `fixed` adds constant fields to every request. If a provider answers 422, its field names changed: check the model's API page and fix `inputs`.
 

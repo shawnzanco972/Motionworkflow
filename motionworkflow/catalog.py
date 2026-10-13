@@ -12,7 +12,7 @@ from functools import lru_cache
 
 from . import config
 
-KINDS = ("image", "image_edit", "video", "image_to_video", "swap", "tts")
+KINDS = ("image", "image_edit", "video", "image_to_video", "swap", "tts", "voice_clone", "talking_head", "lipsync")
 TIERS = ("free", "budget", "standard", "premium")
 
 # Approximate output megapixels for fal's image_size presets, used for pricing.
@@ -140,6 +140,8 @@ def estimate(model: dict, params: dict) -> float:
         seconds = params.get("duration")
         if seconds is None and params.get("source_seconds"):
             seconds = params["source_seconds"]
+        if model.get("max_seconds") and not model.get("durations"):
+            return rate * float(seconds or 5)  # output length follows the input audio/video
         return rate * pick_duration(model, float(seconds) if seconds else None)
     if unit == "video":
         return rate
@@ -188,6 +190,7 @@ def summary(model: dict) -> dict:
         "resolutions": model.get("resolutions"),
         "default_resolution": model.get("default_resolution"),
         "voices": model.get("voices"),
+        "max_seconds": model.get("max_seconds"),
         "notes": model.get("notes", ""),
         "available": available(model),
     }

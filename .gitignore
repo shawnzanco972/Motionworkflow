@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 *.egg-info/
 runs/
+# Your saved avatars and voices (personal biometric data): never commit
+library/
 build/
 dist/
 .DS_Store

@@ -22,6 +22,8 @@ Every generation command takes `--estimate` (prints the quote, spends nothing). 
 
 | Request | Command |
 |---|---|
+| You talking to camera | `mw presenter "TOPIC" --avatar ID --voice-sample ID --seconds 30` → pauses after script + voice |
+| Save your face / voice | `mw avatars add FILE --name N --consent` · `mw voices add FILE --name N --consent [--transcript ...]` |
 | Narrated short, cheapest | `mw short "IDEA" --shots 6` (slideshow: keyframes + voice + captions) |
 | Narrated short, AI motion | `mw short "IDEA" --mode animated --tier budget` → pauses at storyboard |
 | Own script | `mw short --script-file script.txt` (lines: `narration \| visual \| motion`) |

@@ -14,8 +14,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from . import __version__, budget, catalog, config, jobs, media, webhook, workflows
+from . import __version__, budget, catalog, config, genjutsu, jobs, library, media, webhook, workflows
 from .providers.base import AUDIO_EXT, IMAGE_EXT, VIDEO_EXT
 
 UPLOAD_FIELDS = {
@@ -25,6 +26,8 @@ UPLOAD_FIELDS = {
     "refs": IMAGE_EXT | VIDEO_EXT,
     "character": IMAGE_EXT,
     "music": AUDIO_EXT,
+    "avatar": IMAGE_EXT | VIDEO_EXT,
+    "voice_sample": AUDIO_EXT | VIDEO_EXT,
 }
 MAX_UPLOAD = 500 * 1024 * 1024
 SETTABLE = set(config.KEYS) | {
@@ -66,10 +69,35 @@ def _job(job_id: str) -> jobs.Job:
         raise HTTPException(404, "Job not found") from None
 
 
+def _title(job: jobs.Job) -> str:
+    p = job.params
+    plan = job.data.get("plan") or {}
+    for value in (plan.get("title"), p.get("topic"), p.get("idea"), p.get("prompt"), p.get("text"), (p.get("script") or "")[:80]):
+        if value and str(value).strip():
+            return str(value).strip()[:90]
+    return {"swap": "Character swap", "presenter": "Presenter video"}.get(job.data["workflow"], job.data["workflow"].title())
+
+
+def _thumb(data: dict) -> str | None:
+    outputs = data.get("outputs", [])
+    for pick in (lambda o: o["path"] == "thumbnail.jpg", lambda o: o["label"] == "Shot 1 keyframe",
+                 lambda o: o["kind"] == "image"):
+        found = next((o for o in outputs if pick(o)), None)
+        if found:
+            return found["url"]
+    for field in ("avatar", "image", "character", "refs"):  # before any output exists
+        for rel in data.get("inputs", {}).get(field, []):
+            if rel.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                return f"/files/{data['id']}/{rel}"
+    return None
+
+
 def _public(job: jobs.Job) -> dict:
     data = job.public()
     data["active"] = workflows.is_active(job.id)
     data["spent"] = round(budget.spent_on_job(job.id), 4)
+    data["title"] = _title(job)
+    data["thumb"] = _thumb(data)
     data.pop("traceback", None)
     return data
 
@@ -90,6 +118,9 @@ def files(job_id: str, path: str):
     return FileResponse(target)
 
 
+app.mount("/static", StaticFiles(directory=config.PACKAGE / "static"), name="static")
+
+
 # -- read-only API -------------------------------------------------------------
 
 @app.get("/api/status")
@@ -106,7 +137,20 @@ def status():
         "default_tier": config.setting("MW_DEFAULT_TIER"),
         "ffmpeg": ffmpeg_ok,
         "enhancor_webhook": bool(config.setting("ENHANCOR_WEBHOOK_URL") or webhook.current_url()),
+        "skills": {
+            "take_one": (config.ROOT / ".claude" / "skills" / "take-one" / "SKILL.md").exists(),
+            "genjutsu": genjutsu.status(),
+        },
+        "library": {kind: len(library.items(kind)) for kind in library.KINDS},
+        "jobs": _job_counts(),
     }
+
+
+def _job_counts() -> dict:
+    counts: dict[str, int] = {}
+    for job in jobs.all_jobs(500):
+        counts[job.data["state"]] = counts.get(job.data["state"], 0) + 1
+    return counts
 
 
 @app.get("/api/models")
@@ -155,6 +199,17 @@ def _save_uploads(uploads: dict[str, list[UploadFile]], tmp: Path) -> dict[str, 
     return saved
 
 
+def _resolve_library(values: dict, saved: dict) -> None:
+    """Swap library ids for their files, so a job keeps working if the item is later deleted."""
+    if values.get("avatar_id") and not saved.get("avatar"):
+        saved["avatar"] = [Path(library.get("avatars", values["avatar_id"])["path"])]
+    if values.get("voice_id") and not saved.get("voice_sample"):
+        voice = library.get("voices", values["voice_id"])
+        saved["voice_sample"] = [Path(voice["reference_path"])]
+        if voice.get("transcript") and voice["duration"] <= library.REF_SECONDS + 0.5:
+            values["voice_transcript"] = voice["transcript"]
+
+
 @app.post("/api/jobs")
 async def create_job(
     workflow: str = Form(...),
@@ -165,6 +220,8 @@ async def create_job(
     image: UploadFile | None = File(None),
     character: UploadFile | None = File(None),
     music: UploadFile | None = File(None),
+    avatar: UploadFile | None = File(None),
+    voice_sample: UploadFile | None = File(None),
     refs: list[UploadFile] | None = File(None),
 ):
     try:
@@ -175,9 +232,14 @@ async def create_job(
     tmp = Path(tempfile.mkdtemp(prefix="upload-", dir=config.RUNS))
     try:
         uploads = {"video": [video], "original": [original], "image": [image], "character": [character],
-                   "music": [music], "refs": refs or []}
+                   "music": [music], "avatar": [avatar], "voice_sample": [voice_sample], "refs": refs or []}
         saved = _save_uploads(uploads, tmp)
+        try:
+            _resolve_library(values, saved)
+        except library.LibraryError as exc:
+            raise HTTPException(400, str(exc)) from None
         counts = {k: len(v) for k, v in saved.items()}
+        counts["avatar_is_video"] = bool(saved.get("avatar") and saved["avatar"][0].suffix.lower() in VIDEO_EXT)
         if workflow == "swap" and saved.get("video"):
             values["source_seconds"] = round(media.probe(saved["video"][0])["duration"], 2)
         try:
@@ -245,6 +307,61 @@ def delete(job_id: str):
     shutil.rmtree(job.folder, ignore_errors=True)
     jobs._live.pop(job.id, None)
     return {"deleted": job_id}
+
+
+# -- asset library -------------------------------------------------------------
+
+@app.get("/api/library")
+def get_library():
+    return {kind: library.items(kind) for kind in library.KINDS}
+
+
+@app.post("/api/library/{kind}")
+async def add_library_item(kind: str, file: UploadFile = File(...), name: str = Form(""), consent: bool = Form(False),
+                           transcript: str = Form("")):
+    if kind not in library.KINDS:
+        raise HTTPException(404)
+    suffix = Path(file.filename or "").suffix.lower() or ".bin"
+    tmp = Path(tempfile.mkdtemp(prefix="lib-", dir=config.RUNS))
+    try:
+        src = tmp / ("upload" + suffix)
+        with src.open("wb") as out:
+            shutil.copyfileobj(file.file, out)
+        if src.stat().st_size > MAX_UPLOAD:
+            raise HTTPException(413, "That file is larger than 500 MB.")
+        if kind == "avatars":
+            return library.add_avatar(src, name, consent)
+        return library.add_voice(src, name, consent, transcript)
+    except (library.LibraryError, media.MediaError) as exc:
+        raise HTTPException(400, str(exc)) from None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.patch("/api/library/{kind}/{item_id}")
+async def rename_library_item(kind: str, item_id: str, request: Request):
+    body = await request.json()
+    try:
+        return library.rename(kind, item_id, body.get("name", ""))
+    except library.LibraryError as exc:
+        raise HTTPException(404, str(exc)) from None
+
+
+@app.delete("/api/library/{kind}/{item_id}")
+def delete_library_item(kind: str, item_id: str):
+    try:
+        library.delete(kind, item_id)
+    except library.LibraryError as exc:
+        raise HTTPException(404, str(exc)) from None
+    return {"deleted": item_id}
+
+
+@app.get("/library/{kind}/{item_id}/{name}")
+def library_file(kind: str, item_id: str, name: str):
+    try:
+        return FileResponse(library.file_path(kind, item_id, name))
+    except library.LibraryError:
+        raise HTTPException(404) from None
 
 
 @app.get("/api/settings")

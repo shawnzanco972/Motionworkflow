@@ -200,3 +200,116 @@ def make_plan(idea: str, style: str = "", shots: int = 5, tone: str = "funny", t
             return _clean(template(idea, style, shots), shots), f"Claude planning failed ({exc}); used the built-in template."
     return _clean(template(idea, style, shots), shots), (
         "No ANTHROPIC_API_KEY: used the built-in template. Add a key for real scripts, or paste your own script.")
+
+
+# -- presenter (talk-to-camera) scripts -------------------------------------------
+
+PRESENTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "takeaway": {"type": "string"},
+        "lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}, "broll": {"type": "string"}},
+                "required": ["text", "broll"],
+                "additionalProperties": False,
+            },
+        },
+        "caption": {"type": "string"},
+        "hashtags": {"type": "array", "items": {"type": "string"}},
+        "posts": SCHEMA["properties"]["posts"],
+    },
+    "required": ["title", "takeaway", "lines", "caption", "hashtags", "posts"],
+    "additionalProperties": False,
+}
+
+PRESENTER_SYSTEM = """You write what one person says to camera in a short talking video (TikTok, Reels, Shorts, YouTube). They read it in their own voice, so it must sound like them talking to a friend, in the first person.
+
+- The first line is the hook: a surprising claim, question or promise that makes people stay. No greetings, no "Hey guys", no "In this video".
+- One takeaway; every line serves it. End with a line that lands it (a payoff, or a simple next step if the person asked for one).
+- Spoken words, written to be understood on one hearing: short sentences, everyday words, one idea per line, at most 25 words per line.
+- Budget about 2.3 words per second; the total word budget is given. Cut ideas, not pace.
+- Facts: only what is widely known and true, said plainly. No invented statistics, quotes, studies, prices or names. No medical, legal or financial advice beyond general information.
+- `broll`: when cutaways are requested, give about one line in three (never the first or last) a complete image prompt that illustrates that line: subject, setting, light, framing, no text, no logos, no real people. Otherwise and for all other lines, an empty string.
+- `caption`: the post description, 1-2 lines. `hashtags`: 3-6 tags without '#'. `posts`: tiktok (hook under 15 words + one line), x (short), linkedin (a fuller first-person sentence or two, no hashtags)."""
+
+
+def _split_sentences(text: str) -> list[str]:
+    parts = re.split(r"(?<=[.!?])\s+", " ".join(text.split()))
+    return [p for p in parts if p.strip()]
+
+
+def presenter_from_script(script: str, title: str = "") -> dict:
+    """Your own words: one line per sentence (blank lines and long sentences respected)."""
+    lines = []
+    for paragraph in [p for p in re.split(r"\n\s*\n|\n", script) if p.strip()]:
+        lines += [{"text": s, "broll": ""} for s in _split_sentences(paragraph)]
+    if not lines:
+        raise PlannerError("The script is empty.")
+    caption = title or lines[0]["text"]
+    return {"title": title or lines[0]["text"][:70], "takeaway": caption, "lines": lines, "caption": caption,
+            "hashtags": [], "posts": _default_posts(caption, caption, []), "planner": "script"}
+
+
+def presenter_template(topic: str, seconds: float, broll: bool = False) -> dict:
+    lines = [
+        f"Here is the one thing most people get wrong about {topic}.",
+        f"Let me explain {topic} in plain words.",
+        "The short version is simpler than you think.",
+        "Start small, stay consistent, and check your results.",
+        f"Follow for more on {topic}.",
+    ]
+    count = max(2, min(len(lines), round(seconds / 6)))
+    chosen = lines[:count - 1] + [lines[-1]]
+    tags = ["learnontiktok", "explained", "tips"]
+    cut = f"{topic}, illustrative editorial photo, natural light, shallow depth of field" if broll else ""
+    return {"title": topic[:80], "takeaway": topic,
+            "lines": [{"text": t, "broll": cut if 0 < i < len(chosen) - 1 and i % 2 == 1 else ""} for i, t in enumerate(chosen)],
+            "caption": topic, "hashtags": tags, "posts": _default_posts(topic, topic, tags), "planner": "template"}
+
+
+def presenter_plan(topic: str, seconds: float = 30, tone: str = "friendly expert", language: str = "English",
+                   tier: str = "budget", script: str = "", broll: bool = False, audience: str = "") -> tuple[dict, str | None]:
+    """Return (plan, warning) for a talk-to-camera video."""
+    if script.strip():
+        return presenter_from_script(script, topic.strip()), None
+    if not topic.strip():
+        raise PlannerError("Say what the video is about, or paste your script.")
+    if not config.has_key("ANTHROPIC_API_KEY"):
+        return presenter_template(topic, seconds, broll), (
+            "No ANTHROPIC_API_KEY: used a basic template. Add a key for a real script, or paste your own.")
+    import anthropic
+
+    model = config.setting("MW_PLANNER_MODEL_BUDGET" if tier in ("free", "budget") else "MW_PLANNER_MODEL")
+    words = int(seconds * 2.3)
+    prompt = (f"Topic: {topic}\nLanguage: {language}\nTone: {tone}\n"
+              + (f"Audience: {audience}\n" if audience else "")
+              + f"Length: about {seconds:g} s, so about {words} words in total.\n"
+              f"Cutaways (broll): {'yes' if broll else 'no'}\nWrite the script.")
+    client = anthropic.Anthropic(api_key=config.credential("ANTHROPIC_API_KEY"))
+    kwargs = dict(model=model, max_tokens=16000, system=PRESENTER_SYSTEM,
+                  messages=[{"role": "user", "content": prompt}],
+                  output_config={"effort": "medium", "format": {"type": "json_schema", "schema": PRESENTER_SCHEMA}})
+    try:
+        if model.startswith(("claude-opus-5", "claude-sonnet-5-5", "claude-fable-5")):
+            response = client.beta.messages.create(**kwargs, betas=["server-side-fallback-2026-07-01"],
+                                                   fallbacks="default")
+        else:
+            response = client.messages.create(**kwargs)
+        if response.stop_reason in ("refusal", "max_tokens"):
+            raise PlannerError(f"Claude stopped early ({response.stop_reason}).")
+        plan = json.loads(next((b.text for b in response.content if b.type == "text"), ""))
+    except (anthropic.APIError, ValueError, PlannerError) as exc:
+        return presenter_template(topic, seconds, broll), f"Claude could not write the script ({exc}); used a basic template."
+    plan["lines"] = [ln for ln in plan.get("lines", []) if ln.get("text", "").strip()]
+    if not plan["lines"]:
+        return presenter_template(topic, seconds, broll), "Claude returned an empty script; used a basic template."
+    if not broll:
+        for ln in plan["lines"]:
+            ln["broll"] = ""
+    plan["hashtags"] = [re.sub(r"^#", "", h).strip() for h in plan.get("hashtags", []) if h.strip()]
+    plan["planner"] = model
+    return plan, None

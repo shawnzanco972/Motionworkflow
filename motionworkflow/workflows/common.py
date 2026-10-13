@@ -13,7 +13,7 @@ from .. import budget, catalog, config, providers
 from ..jobs import Job
 from ..providers.base import AmbiguousError, ProviderError, RejectedError, StillRunning, is_url
 
-MEDIA_PARAMS = ("image", "video")
+MEDIA_PARAMS = ("image", "video", "audio_file", "voice_sample")
 
 
 class StepFailed(RuntimeError):

@@ -15,14 +15,14 @@ It's plug-and-play: it runs end-to-end **today with no API keys** (free images +
 
 | Page / command | What it does | Typical cost (budget tier) |
 |---|---|---|
-| **Presenter** · `mw presenter` | **You** talking to camera about any topic: Claude writes the script, it's spoken in **your cloned voice**, and **your photo or short video** is animated saying it, with captions, optional cutaways and posts | **~$1.70** per 30 s (photo) · **~$0.40** per 30 s (your video, lip-synced) |
-| **Short Maker** · `mw short` | Idea → script → keyframes → voiceover → captions → finished 9:16 MP4 + post caption/hashtags | **~$0.03** for 6 narrated slideshow shots · **~$0.15–1.50** animated |
+| **Presenter** · `mw presenter` | **You** talking to camera about any topic: Claude writes the script, it's spoken in **your cloned voice**, and **your photo or short video** is animated saying it, with captions, optional cutaways and posts | **~$0.77** per minute (your video, lip-synced) · **~$1.75** per 30 s (photo) |
+| **Short Maker** · `mw short` | Idea → script → keyframes → voiceover → captions → finished 9:16 MP4 + post caption/hashtags | **~$0.08** for 5 narrated shots · **~$0.18** animated (budget) to ~$1.60 (standard) |
 | **Image** · `mw image` | Text-to-image, batches, reference-image edits / consistent characters | **~$0.003** per image |
 | **Video** · `mw video` | Text-to-video or animate a still; optional cheap draft → approved premium final | **~$0.02–0.25** per clip |
-| **Character Swap** · `mw swap` | Replace the person in a clip with your character, keep the original audio; optional Genjutsu depth/SAM 3 or face-mesh prep | **~$0.20–0.50** draft for 5 s (+~$0.30 Genjutsu prep) |
+| **Character Swap** · `mw swap` | Replace the person in a clip with your character, keep the original audio; optional Genjutsu depth/SAM 3 or face-mesh prep | **~$0.80–1.20** for 10 s, draft + final (+~$0.30 Genjutsu prep) |
 | **Voice** · `mw voice` | Voiceover from text (Kokoro, ElevenLabs) | **~$0.002** per line |
 
-Costs are estimates from [`motionworkflow/models.json`](motionworkflow/models.json); providers change prices often, so check their pages (see [docs/PROVIDERS.md](docs/PROVIDERS.md)).
+Costs are estimates from [`motionworkflow/models.json`](motionworkflow/models.json) and include the script and the reviewer where they apply; providers change prices often, so check their pages (see [docs/PROVIDERS.md](docs/PROVIDERS.md)). The app's **Price guide** (Spending page, or `mw prices`) recomputes this table from the catalog for every tier.
 
 ## Quick start
 
@@ -54,11 +54,18 @@ Run `.venv/bin/mw doctor` to see which models each tier will use with your keys.
 
 - **Home** — what's waiting for your approval, recent projects, a setup checklist and today's spend.
 - **Create** — Presenter, Short Maker, Image, Video, Voiceover, Character Swap. Each page is a short numbered form with a live price on the right, and shows where it will stop for your approval.
-- **Projects** — everything you've made, filterable by status and type. A project page plays the result, lets you approve the next step, edit and re-voice a single script line or redo a single shot, shows the reviewer's score, the parts, the files and the cost.
+- **Projects** — everything you've made: search, filter by status and type, and see what each cost. A project page plays the result, lets you approve the next step, edit and re-voice a single script line or redo a single shot, and shows the reviewer's score, the parts and the files. From its **⋯** menu: **Run again** (same inputs, new takes), **Edit as new** (the form, prefilled), **Download everything** (one zip). While it runs you can **Stop** it, and **Resume** later without paying twice.
+- **Spending** — today / 7 / 30 days / all time, spend per day (chart or table), by service and by model, every charge and refund linked to its project, and the **Price guide**: what typical projects cost at each tier.
 - **Avatars & voices** — save your face (a photo, or 10-20 s of video looking at the camera) and your voice (record it in the browser reading a short text, or upload a file) once, and reuse them everywhere. Each needs a "this is me / they agreed" confirmation; they stay in `library/` on your computer.
 - **Settings** — API keys, budget limits and default tier, every model with its price, skill/tool status, light/dark theme.
 
-It works on a phone-sized window too (menu drawer, sticky price bar).
+It works on a phone-sized window too (menu drawer, sticky price bar), and tells you (a toast, and a count in the tab title) when a project needs your approval, finishes or fails.
+
+## Pricing you can see
+
+- **Before**: every form shows a live estimate, line by line, for the tier you pick; the Price guide compares tiers for typical projects; Home shows a "from" price on each service.
+- **During**: each approval button shows what the next step costs (e.g. "Approve · $1.69"), and anything above your "ask me" amount needs a confirmation.
+- **After**: each project has a cost card (spent vs estimate, per step, every charge and refund); project cards and the Projects list show spend; the Spending page adds it all up. The sidebar meter turns amber past 80% of today's budget.
 
 ## Your avatar and voice
 
@@ -78,7 +85,7 @@ mw approve <job>      # after listening to the voice track
 
 ## Tiers
 
-Pick **Free / Budget / Standard / Premium** on any form. The app chooses the best model in that tier that you have a key for, falling back to cheaper tiers and finally to free/mock models so nothing breaks. You can also pick an exact model.
+Pick **Cheapest / Budget / Standard / Premium** on any form ("Cheapest" uses free models where they exist). The app chooses the best model in that tier that you have a key for, falling back to cheaper tiers and finally to free/mock models so nothing breaks. You can also pick an exact model.
 
 | Kind | Budget (default) | Standard | Premium |
 |---|---|---|---|
@@ -98,7 +105,9 @@ Pick **Free / Budget / Standard / Premium** on any form. The app chooses the bes
 - **Caps.** `MW_MAX_COST_PER_JOB`, `MW_DAILY_BUDGET`, and a confirmation prompt above `MW_CONFIRM_ABOVE` (defaults $5 / $10 / $0.50).
 - **Approval gates before the expensive part.** Animated shorts stop at the storyboard; drafts stop before the premium/1080p final. Editing or redoing anything withdraws the approval.
 - **Never pays twice.** Request IDs are saved the moment a provider accepts them. Restarting resumes *collection*; a request whose outcome is unclear (timeout) is never auto-resubmitted — you check the provider dashboard and retry with `--force`.
-- Rejected requests are refunded in the local ledger; `mw spend` shows the totals. Your provider bill is the source of truth.
+- **Stop any time.** Stop sends nothing new; requests already sent may still finish (and be billed) and Resume collects them.
+- **Settings are checked.** A budget typed as text, a negative or absurd amount, or an unknown tier is refused with a reason instead of being silently ignored.
+- Rejected requests are refunded in the local ledger; the Spending page and `mw spend` show the totals. Your provider bill is the source of truth.
 
 ## CLI
 
@@ -116,6 +125,8 @@ mw swap clip.mp4 --ref c.png --model enhancor:seedance-edit --prep genjutsu-dept
 mw voice "Nobody suspects the pigeon." --voice af_heart
 mw review <job>                                                       # fresh-eyes score (Claude)
 mw --json image "..."                                                 # machine-readable, for agents / Take One
+mw stop <job>                                                         # stop at the next checkpoint; mw resume <job> later
+mw prices                                                             # price guide: typical projects × tiers
 mw models --kind video        mw jobs        mw status <job>        mw spend
 ```
 
@@ -136,6 +147,8 @@ Each job is a folder in `runs/<job-id>/` with `job.json`, inputs, every model ou
 ```bash
 .venv/bin/python -m unittest discover -s tests     # offline: no keys, no network, no spend
 ```
+
+The browser tests in `tests/test_browser.py` run when Playwright and Chromium are installed (`.venv/bin/pip install playwright && .venv/bin/playwright install chromium`); set `AXE_JS` to an `axe.min.js` to add an accessibility audit. See [CHANGELOG.md](CHANGELOG.md) for what changed and [docs/ROADMAP.md](docs/ROADMAP.md) for known limits and what's next.
 
 ## Responsible use
 

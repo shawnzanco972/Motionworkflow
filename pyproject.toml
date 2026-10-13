@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "motionworkflow"
-version = "0.1.0"
+version = "0.3.0"
 description = "Local studio for cheap AI images, videos, narrated shorts and character swaps."
 readme = "README.md"
 requires-python = ">=3.10"

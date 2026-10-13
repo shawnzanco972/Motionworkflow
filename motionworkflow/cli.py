@@ -396,8 +396,42 @@ def cmd_stop(args):
 
 
 def cmd_spend(args):
-    report = budget.report()
-    print(json.dumps(report, indent=2))
+    data = budget.summary(14)
+    if JSON_OUTPUT:
+        data.pop("recent")
+        print(json.dumps(data, indent=2))
+        return 0
+    lim = data["limits"]
+    print(f"Today      ${data['today']:.2f} of ${lim['daily_budget']:.2f} daily budget")
+    print(f"7 days     ${data['week']:.2f}")
+    print(f"30 days    ${data['month']:.2f}")
+    print(f"All time   ${data['all_time']:.2f}  ({data['charges']} charges)")
+    if data["by_model"]:
+        print("\nBy model")
+        for row in data["by_model"][:8]:
+            print(f"  ${row['usd']:>7.3f}  {row['model']}")
+    print(f"\nLimits: ${lim['max_cost_per_job']:.2f} per project, asks above ${lim['confirm_above']:.2f}. "
+          "Estimates from catalog prices; your provider's bill is the source of truth.")
+    return 0
+
+
+def cmd_prices(args):
+    from . import pricing
+
+    guide = pricing.guide()
+    if JSON_OUTPUT:
+        print(json.dumps(guide, indent=2))
+        return 0
+    labels = {"free": "Cheapest", "budget": "Budget", "standard": "Standard", "premium": "Premium"}
+    print(f"{'':32}" + "".join(f"{labels[t]:>11}" for t in guide["tiers"]))
+    for row in guide["rows"]:
+        cells = []
+        for tier in guide["tiers"]:
+            p = row["prices"][tier]
+            text = "-" if not p else "same" if p.get("same_as_cheaper") else "free" if p["usd"] == 0 else f"${p['usd']:.{3 if p['usd'] < 0.1 else 2}f}"
+            cells.append(f"{text + ('!' if p and p.get('over_cap') else ''):>11}")
+        print(f"{row['title'][:31]:32}" + "".join(cells))
+    print(f"\n! = over your per-project limit (${guide['max_cost_per_job']:.2f}). Priced as if every key were set.")
     return 0
 
 
@@ -566,8 +600,11 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("job")
     s.set_defaults(fn=cmd_stop)
 
-    s = sub.add_parser("spend", help="estimated spend so far")
+    s = sub.add_parser("spend", help="what you've spent: today, 7 and 30 days, by model")
     s.set_defaults(fn=cmd_spend)
+
+    s = sub.add_parser("prices", help="price guide: typical projects at each quality tier")
+    s.set_defaults(fn=cmd_prices)
     return p
 
 

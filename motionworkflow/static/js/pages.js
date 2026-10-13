@@ -328,7 +328,7 @@ export async function settings(page, tab) {
   tab = tab || "keys";
   const tabs = [["keys", "API keys"], ["budget", "Budget & defaults"], ["models", "Models & prices"], ["skills", "Skills & tools"], ["appearance", "Appearance"]];
   page.innerHTML = `<div class="page-head"><div class="titles"><h1 class="page-title">Settings</h1><p class="page-sub">Keys stay in this folder's <code>.env</code>, readable only by you.</p></div></div>
-    <nav class="tabs">${tabs.map(([k, l]) => `<a href="#/settings/${k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav><div id="tabBody"></div>`;
+    <nav class="tabs" aria-label="Settings sections">${tabs.map(([k, l]) => `<a href="#/settings/${k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav><div id="tabBody"></div>`;
   const body = $("#tabBody", page);
   const s = await api("/api/settings");
 

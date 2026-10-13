@@ -67,11 +67,8 @@ function renderAvatarPicker(form, ctx) {
     const id = fid("av");
     return `<div class="pick"><input type="radio" name="avatar_id" id="${id}" value="${a.id}" ${a.id === current ? "checked" : ""}>
       <label for="${id}"><span class="thumb" style="background-image:url('${a.thumb_url}')">${a.kind === "video" ? `<span class="badge plain">Video</span>` : ""}</span><span class="nm">${esc(a.name)}</span></label></div>`;
-  }).join("") + `<div class="pick add"><label tabindex="0" role="button" data-add-avatar>${icon("plus", "lg")}<span>Add a photo<br>or video of you</span></label></div>`;
-  const add = $("[data-add-avatar]", box);
-  const open = async () => { const item = await addAvatarDialog(); if (item) { ctx.values.avatar_id = item.id; renderAvatarPicker(form, ctx); ctx.changed(); } };
-  add.onclick = open;
-  add.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+  }).join("") + `<div class="pick add"><button type="button" data-add-avatar>${icon("plus", "lg")}<span>Add a photo<br>or video of you</span></button></div>`;
+  $("[data-add-avatar]", box).onclick = async () => { const item = await addAvatarDialog(); if (item) { ctx.values.avatar_id = item.id; renderAvatarPicker(form, ctx); ctx.changed(); } };
 }
 
 function renderVoicePicker(form, ctx) {

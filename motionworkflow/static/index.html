@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotionWorkflow</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0e0f13;--panel:#171920;--panel2:#1f222b;--line:#2b2f3a;--text:#e9ebf1;--muted:#9097a6;
+  --accent:#7c5cff;--accent2:#22c3a6;--warn:#f5b041;--bad:#ef5a6f;--good:#3ecf8e;--radius:12px;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){--bg:#f5f6fa;--panel:#fff;--panel2:#f0f1f6;--line:#dcdfe8;--text:#16181d;--muted:#5e6575}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;letter-spacing:.2px}
+header h1 span{color:var(--accent)}
+.pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:13px;color:var(--muted);white-space:nowrap}
+.pill b{color:var(--text)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.chip{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.chip.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}
+nav{display:flex;gap:4px;padding:10px 20px 0;overflow-x:auto}
+nav button{background:none;border:0;color:var(--muted);padding:10px 14px;border-radius:10px 10px 0 0;font-size:15px;cursor:pointer;white-space:nowrap}
+nav button.active{color:var(--text);background:var(--panel);box-shadow:inset 0 2px 0 var(--accent)}
+main{padding:0 20px 40px}
+section.tab{display:none;background:var(--panel);border:1px solid var(--line);border-radius:0 var(--radius) var(--radius) var(--radius);padding:20px}
+section.tab.active{display:block}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:24px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+input[type=text],input[type=number],input[type=password],textarea,select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit}
+textarea{min-height:88px;resize:vertical}
+input[type=file]{width:100%;color:var(--muted);font-size:13px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.check{display:flex;align-items:center;gap:8px;margin:12px 0 0;color:var(--text);font-size:14px}
+.check input{width:16px;height:16px;accent-color:var(--accent)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;width:max-content;max-width:100%;flex-wrap:wrap}
+.seg input{display:none}
+.seg label{margin:0;padding:8px 13px;cursor:pointer;color:var(--muted);font-size:14px;border-right:1px solid var(--line)}
+.seg label:last-child{border-right:0}
+.seg input:checked+label{background:var(--accent);color:#fff}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:11px 18px;font:600 15px system-ui;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line);font-weight:500}
+.btn.small{padding:6px 11px;font-size:13px}
+.btn.danger{background:var(--bad)}
+.estimate{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:16px}
+.estimate h3{margin:0 0 8px;font-size:14px;color:var(--muted);font-weight:500}
+.estimate .total{font-size:26px;font-weight:700}
+.estimate ul{list-style:none;padding:0;margin:10px 0 0;font-size:13px}
+.estimate li{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px dashed var(--line)}
+.estimate li span:first-child{color:var(--muted)}
+.note{font-size:13px;color:var(--warn);margin-top:8px}
+.hint{font-size:12px;color:var(--muted);margin-top:4px}
+.ideas{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ideas button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
+details{margin-top:12px}
+summary{cursor:pointer;color:var(--muted);font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;cursor:pointer;display:flex;flex-direction:column}
+.card .thumb{aspect-ratio:16/10;background:#000 center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px}
+.card .meta{padding:10px;font-size:13px}
+.card .meta div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--text);text-transform:uppercase;letter-spacing:.4px}
+.badge.done{background:color-mix(in srgb,var(--good) 25%,transparent);color:var(--good)}
+.badge.error{background:color-mix(in srgb,var(--bad) 25%,transparent);color:var(--bad)}
+.badge.awaiting_approval{background:color-mix(in srgb,var(--warn) 25%,transparent);color:var(--warn)}
+.badge.running,.badge.queued{background:color-mix(in srgb,var(--accent) 30%,transparent);color:#b9a8ff}
+.detail{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
+.banner{border:1px solid var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);border-radius:var(--radius);padding:14px;margin:14px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.banner.error{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.outputs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:14px}
+.out{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:8px}
+.out img,.out video{width:100%;border-radius:8px;display:block;background:#000;max-height:520px;object-fit:contain}
+.out .lbl{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:6px}
+.out .lbl a{color:var(--accent2)}
+.out.final{border-color:var(--accent)}
+.shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:12px}
+.shot{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:10px}
+.shot img{width:100%;border-radius:8px;aspect-ratio:9/16;object-fit:cover;background:#000;max-height:300px}
+.shot textarea{min-height:56px;font-size:13px}
+.log{font:12px/1.5 ui-monospace,Menlo,monospace;background:var(--panel2);border-radius:10px;padding:10px;max-height:220px;overflow:auto;white-space:pre-wrap;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.tablewrap{overflow-x:auto}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--radius);max-width:460px;width:calc(100% - 32px)}
+dialog::backdrop{background:#0009}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;display:none;max-width:90vw;z-index:20}
+.muted{color:var(--muted)}
+.flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@media (max-width:600px){header,main,nav{padding-left:16px;padding-right:16px}section.tab{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Motion<span>Workflow</span></h1>
+  <span class="pill" id="budgetPill">Budget …</span>
+  <div class="chips" id="providerChips"></div>
+</header>
+<nav id="tabs">
+  <button data-tab="short" class="active">🎬 Short Maker</button>
+  <button data-tab="image">🖼️ Image</button>
+  <button data-tab="video">🎞️ Video</button>
+  <button data-tab="swap">🎭 Character Swap</button>
+  <button data-tab="library">📚 Library</button>
+  <button data-tab="settings">⚙️ Settings</button>
+</nav>
+<main>
+
+<!-- SHORT MAKER -->
+<section class="tab active" id="tab-short">
+<form data-workflow="short" class="grid2">
+  <div>
+    <label>Video idea</label>
+    <textarea name="idea" placeholder="e.g. A pigeon who secretly runs a hedge fund from a park bench"></textarea>
+    <div class="ideas" id="ideaChips"></div>
+    <details><summary>Use my own script instead</summary>
+      <label>One shot per line: <code>narration | visual prompt | motion</code> (visual and motion optional)</label>
+      <textarea name="script" placeholder="Nobody suspects the pigeon. | a pigeon in a tiny suit on a park bench reading the Financial Times | slow push-in"></textarea>
+    </details>
+    <div class="row">
+      <div><label>Style</label><select name="style" id="stylePreset"></select></div>
+      <div><label>Tone</label><select name="tone"><option>funny</option><option>absurd</option><option>wholesome</option><option>dramatic</option><option>educational</option><option>motivational</option><option>spooky</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Shots</label><input type="number" name="shots" value="5" min="1" max="12"></div>
+      <div><label>Seconds / shot</label><input type="number" name="shot_seconds" value="5" min="2" max="10" step="0.5"></div>
+      <div><label>Format</label><select name="aspect_ratio"><option value="9:16">9:16 vertical</option><option value="16:9">16:9 wide</option><option value="1:1">1:1 square</option></select></div>
+    </div>
+    <label>Mode</label>
+    <div class="seg">
+      <input type="radio" name="mode" value="slideshow" id="m1" checked><label for="m1">Slideshow · cents</label>
+      <input type="radio" name="mode" value="animated" id="m2"><label for="m2">Animated · AI video</label>
+    </div>
+    <div class="hint">Slideshow animates stills locally (free). Animated sends every shot to an image-to-video model after you approve the storyboard.</div>
+    <div class="row">
+      <div><label class="check"><input type="checkbox" name="voiceover" checked> Voiceover</label></div>
+      <div><label class="check"><input type="checkbox" name="captions" checked> Captions</label></div>
+      <div><label class="check"><input type="checkbox" name="review" checked> Storyboard review</label></div>
+    </div>
+    <div class="row">
+      <div><label>Voice</label><select name="voice" id="voiceSelect"></select></div>
+      <div><label>Caption style</label><select name="caption_style"><option value="bold">Bold white</option><option value="yellow">Bold yellow</option><option value="classic">Classic subtitles</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Recurring character (optional image)</label><input type="file" name="character" accept="image/*"></div>
+      <div><label>Background music (optional)</label><input type="file" name="music" accept="audio/*"></div>
+    </div>
+    <details><summary>Models</summary>
+      <label>Keyframe image model</label><select name="image_model" data-kinds="image,image_edit"></select>
+      <label>Animation model</label><select name="video_model" data-kinds="image_to_video"></select>
+      <label>Voice model</label><select name="tts_model" data-kinds="tts"></select>
+      <label>Video resolution (if the model offers a choice)</label><select name="resolution"><option value="">Model default</option><option>480p</option><option>720p</option><option>1080p</option></select>
+    </details>
+  </div>
+  <div>
+    <label>Quality / price tier</label>
+    <div class="seg tier"></div>
+    <div class="estimate"></div>
+    <button class="btn" type="submit" style="margin-top:14px;width:100%">Create short</button>
+    <p class="hint">You get: final MP4 with voice + captions, keyframes, script, caption &amp; hashtags for posting, thumbnail.</p>
+  </div>
+</form>
+</section>
+
+<!-- IMAGE -->
+<section class="tab" id="tab-image">
+<form data-workflow="image" class="grid2">
+  <div>
+    <label>Prompt</label>
+    <textarea name="prompt" placeholder="A corgi in a business suit giving a TED talk, dramatic stage lighting"></textarea>
+    <div class="row">
+      <div><label>How many</label><input type="number" name="num_images" value="1" min="1" max="8"></div>
+      <div><label>Aspect</label><select name="aspect_ratio"><option>1:1</option><option>9:16</option><option>16:9</option><option>4:3</option><option>3:4</option></select></div>
+      <div><label>Seed (optional)</label><input type="number" name="seed"></div>
+    </div>
+    <label>Reference images (optional: edit / keep a character consistent)</label>
+    <input type="file" name="refs" accept="image/*" multiple>
+    <label>Model</label><select name="model" data-kinds="image,image_edit"></select>
+  </div>
+  <div>
+    <label>Quality / price tier</label><div class="seg tier"></div>
+    <div class="estimate"></div>
+    <button class="btn" type="submit" style="margin-top:14px;width:100%">Generate</button>
+  </div>
+</form>
+</section>
+
+<!-- VIDEO -->
+<section class="tab" id="tab-video">
+<form data-workflow="video" class="grid2">
+  <div>
+    <label>Prompt</label>
+    <textarea name="prompt" placeholder="A raccoon DJ at a rooftop party, camera orbits, neon lights"></textarea>
+    <label>Start image (optional: animates this picture)</label>
+    <input type="file" name="image" accept="image/*">
+    <div class="row">
+      <div><label>Seconds</label><input type="number" name="duration" value="5" min="2" max="10"></div>
+      <div><label>Aspect</label><select name="aspect_ratio"><option>9:16</option><option>16:9</option><option>1:1</option></select></div>
+      <div><label>Resolution</label><select name="resolution"><option value="">Model default</option><option>480p</option><option>720p</option><option>1080p</option></select></div>
+    </div>
+    <label class="check"><input type="checkbox" name="audio"> Generate audio (models that support it; costs more)</label>
+    <label>Model</label><select name="model" data-kinds="video,image_to_video"></select>
+    <label class="check"><input type="checkbox" name="draft_first" id="draftFirst"> Cheap draft first, then a final after I approve</label>
+    <div id="finalOpts" style="display:none">
+      <div class="row">
+        <div><label>Final tier</label><select name="final_tier"><option>premium</option><option>standard</option><option>budget</option></select></div>
+        <div><label>Final resolution</label><select name="final_resolution"><option value="">Model default</option><option>720p</option><option>1080p</option></select></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <label>Quality / price tier</label><div class="seg tier"></div>
+    <div class="estimate"></div>
+    <button class="btn" type="submit" style="margin-top:14px;width:100%">Generate video</button>
+  </div>
+</form>
+</section>
+
+<!-- SWAP -->
+<section class="tab" id="tab-swap">
+<form data-workflow="swap" class="grid2">
+  <div>
+    <p class="muted" style="margin-top:0">Your scene, new character (Genjutsu-style). Upload a clip of up to 30 s and a character image. You get a cheap draft first; the final renders only after you approve. The final keeps the clip's complete original audio.</p>
+    <label>Source video</label><input type="file" name="video" accept="video/*">
+    <label>Character reference (image; Seedance also accepts a short identity video)</label>
+    <input type="file" name="refs" accept="image/*,video/*" multiple>
+    <label>Direction (optional)</label>
+    <textarea name="prompt" placeholder="Replace the man with the character from @Image1. Keep the background, camera, lighting and lip-sync exactly."></textarea>
+    <label>Engine</label><select name="model" data-kinds="swap"></select>
+    <div class="row">
+      <div><label>Draft resolution</label><select name="draft_resolution"><option value="">Model default</option><option>480p</option><option>580p</option><option>720p</option></select></div>
+      <div><label>Final resolution</label><select name="final_resolution"><option value="">Model best</option><option>720p</option><option>580p</option><option>480p</option></select></div>
+    </div>
+    <details><summary>Genjutsu advanced input</summary>
+      <label class="check"><input type="checkbox" name="prepared"> The source is a prepared Genjutsu <code>seedance-input.mp4</code></label>
+      <label>Untouched original clip (its audio goes on the final)</label><input type="file" name="original" accept="video/*,audio/*">
+    </details>
+  </div>
+  <div>
+    <label>Quality / price tier</label><div class="seg tier"></div>
+    <div class="estimate"></div>
+    <button class="btn" type="submit" style="margin-top:14px;width:100%">Create draft</button>
+    <p class="hint">Only swap people you have the right to use, and label AI edits when you post them.</p>
+  </div>
+</form>
+</section>
+
+<!-- LIBRARY -->
+<section class="tab" id="tab-library">
+  <div class="flex"><h2 style="margin:0;font-size:18px">Your jobs</h2><span class="muted" id="libCount"></span></div>
+  <div class="cards" id="cards" style="margin-top:14px"></div>
+  <div class="detail" id="detail" style="display:none"></div>
+</section>
+
+<!-- SETTINGS -->
+<section class="tab" id="tab-settings">
+  <div class="grid2">
+    <div>
+      <h2 style="margin:0;font-size:18px">API keys</h2>
+      <p class="muted">Stored only in this folder's <code>.env</code> (owner-read-only). Leave a field empty to keep the current key. One <b>fal.ai</b> key unlocks most cheap models.</p>
+      <div id="keyFields"></div>
+      <h2 style="font-size:18px;margin-top:24px">Spending guard</h2>
+      <div class="row" id="budgetFields"></div>
+      <button class="btn" id="saveSettings" style="margin-top:16px">Save settings</button>
+    </div>
+    <div>
+      <h2 style="margin:0;font-size:18px">Where to get keys</h2>
+      <table>
+        <tr><td><b>fal.ai</b> (recommended)</td><td>Images, video, voice, swap. <a href="https://fal.ai/dashboard/keys" target="_blank" rel="noopener">fal.ai/dashboard/keys</a></td></tr>
+        <tr><td><b>Replicate</b></td><td>Alternative catalog. <a href="https://replicate.com/account/api-tokens" target="_blank" rel="noopener">replicate.com</a></td></tr>
+        <tr><td><b>Enhancor</b></td><td>Seedance 2.5 swap (Genjutsu). <a href="https://app.enhancor.ai/api-dashboard" target="_blank" rel="noopener">enhancor.ai</a></td></tr>
+        <tr><td><b>Anthropic</b></td><td>Claude writes your scripts. <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com</a></td></tr>
+      </table>
+    </div>
+  </div>
+  <h2 style="font-size:18px;margin-top:28px">Models and prices <span class="muted" style="font-size:13px">(estimates — edit <code>models.local.json</code> to update)</span></h2>
+  <div class="tablewrap"><table id="modelTable"></table></div>
+</section>
+</main>
+
+<dialog id="confirmDialog">
+  <h3 style="margin-top:0">Confirm spend</h3>
+  <div id="confirmBody"></div>
+  <div class="flex" style="justify-content:flex-end;margin-top:16px">
+    <button class="btn ghost" value="cancel" id="confirmNo">Cancel</button>
+    <button class="btn" id="confirmYes">Spend it</button>
+  </div>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = v => { const n = Number(v) || 0; return "$" + n.toFixed(n > 0 && n < 0.1 ? 3 : 2); };
+const TIERS = [["free","Free"],["budget","Budget"],["standard","Standard"],["premium","Premium"]];
+const STYLES = ["vibrant 3D animated film style, soft lighting","photoreal cinematic, shallow depth of field","anime, clean line art, bright colors","claymation stop-motion, handmade textures","retro 90s cartoon, bold outlines","LEGO brick world, toy photography","comic book, halftone shading","watercolor storybook illustration","found-footage documentary, handheld"];
+const IDEAS = ["A pigeon who secretly runs a hedge fund","Cats explain taxes badly","Grandma becomes a famous DJ overnight","If dogs had LinkedIn","A potato's motivational speech","Medieval knight discovers Wi-Fi"];
+let MODELS = [], STATUS = {}, currentJob = null, detailTimer = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(data.detail || res.statusText); e.status = res.status; e.data = data; throw e; }
+  return data;
+}
+function toast(msg, ms = 4000) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", ms); }
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+  $$("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  $$("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
+  try { localStorage.setItem("mw-tab", name); } catch (e) {}
+  if (name === "library") loadLibrary();
+  if (name === "settings") loadSettings();
+}
+$$("#tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* ---------- status ---------- */
+async function loadStatus() {
+  STATUS = await api("/api/status");
+  const b = STATUS.budget;
+  $("#budgetPill").innerHTML = `Today <b>${money(b.spent_today)}</b> / ${money(b.daily_budget)}`;
+  const names = {fal:"fal", replicate:"Replicate", enhancor:"Enhancor", claude:"Claude", pollinations:"Free images"};
+  $("#providerChips").innerHTML = Object.entries(names).map(([k, v]) => `<span class="chip ${STATUS.providers[k] ? "on" : ""}">${STATUS.providers[k] ? "●" : "○"} ${v}</span>`).join("");
+  if (!STATUS.ffmpeg) toast("ffmpeg is missing: install it to assemble videos.", 8000);
+}
+
+/* ---------- forms ---------- */
+function fillModelSelects() {
+  $$("select[data-kinds]").forEach(sel => {
+    const kinds = sel.dataset.kinds.split(",");
+    const keep = sel.value;
+    const rows = MODELS.filter(m => m.kinds.some(k => kinds.includes(k)));
+    sel.innerHTML = `<option value="">Auto: best for the tier with a key</option>` +
+      TIERS.map(([t, label]) => {
+        const group = rows.filter(m => m.tier === t);
+        return group.length ? `<optgroup label="${label}">` + group.map(m =>
+          `<option value="${m.id}" ${m.available ? "" : "disabled"}>${esc(m.name)} · ${m.price_label}${m.available ? "" : " · needs key"}</option>`).join("") + "</optgroup>" : "";
+      }).join("");
+    sel.value = keep;
+  });
+  const tts = MODELS.filter(m => m.kind === "tts" && m.voices);
+  const voices = [...new Set(tts.flatMap(m => m.voices))];
+  $("#voiceSelect").innerHTML = `<option value="">Model default</option>` + voices.map(v => `<option>${v}</option>`).join("");
+}
+
+function setupForms() {
+  $("#stylePreset").innerHTML = STYLES.map(s => `<option>${s}</option>`).join("");
+  $("#ideaChips").innerHTML = IDEAS.map(i => `<button type="button">${esc(i)}</button>`).join("");
+  $$("#ideaChips button").forEach(b => b.onclick = () => { const t = $("[name=idea]"); t.value = b.textContent; t.dispatchEvent(new Event("input", {bubbles: true})); });
+  $("#draftFirst").onchange = e => { $("#finalOpts").style.display = e.target.checked ? "block" : "none"; };
+  $$("form[data-workflow]").forEach((form, fi) => {
+    const def = STATUS.default_tier || "budget";
+    $(".tier", form).innerHTML = TIERS.map(([t, l]) => `<input type="radio" name="tier" value="${t}" id="t${fi}${t}" ${t === def ? "checked" : ""}><label for="t${fi}${t}">${l}</label>`).join("");
+    let timer;
+    const refresh = () => { clearTimeout(timer); timer = setTimeout(() => estimate(form), 350); };
+    form.addEventListener("input", refresh);
+    form.addEventListener("change", refresh);
+    form.addEventListener("submit", e => { e.preventDefault(); submit(form); });
+    estimate(form);
+  });
+}
+
+function collect(form) {
+  const wf = form.dataset.workflow, params = {}, files = {}, counts = {};
+  for (const el of form.elements) {
+    if (!el.name) continue;
+    if (el.type === "file") { if (el.files.length) { files[el.name] = [...el.files]; counts[el.name] = el.files.length; } continue; }
+    if (el.type === "radio") { if (el.checked) params[el.name] = el.value; continue; }
+    if (el.type === "checkbox") { params[el.name] = el.checked; continue; }
+    if (el.value === "") continue;
+    params[el.name] = el.type === "number" ? Number(el.value) : el.value;
+  }
+  if (wf === "video" && !params.draft_first) { delete params.final_tier; delete params.final_resolution; }
+  delete params.draft_first;
+  if (wf === "swap" && files.video) {
+    const v = files.video[0]; counts.source_seconds = form._seconds || 10;
+    if (!form._probing && form._probed !== v) { form._probing = true; probeDuration(v).then(s => { form._seconds = s; form._probed = v; form._probing = false; estimate(form); }); }
+  }
+  return {wf, params, files, counts};
+}
+function probeDuration(file) {
+  return new Promise(res => { const v = document.createElement("video"); v.preload = "metadata"; v.onloadedmetadata = () => { res(Math.min(30, v.duration || 10)); URL.revokeObjectURL(v.src); }; v.onerror = () => res(10); v.src = URL.createObjectURL(file); });
+}
+
+function renderQuote(q) {
+  const items = q.items.map(i => `<li><span>${esc(i.label)}<br><small>${esc(i.model_name)}${i.mock ? " · mock" : ""}</small></span><span>${money(i.usd)}</span></li>`).join("");
+  let note = "";
+  if (q.mock) note += `<div class="note">Some steps will use offline mock output (no API key for them yet). Add keys in Settings.</div>`;
+  if (q.total > q.budget.max_cost_per_job) note += `<div class="note">Over your per-job cap (${money(q.budget.max_cost_per_job)}).</div>`;
+  return `<h3>Estimated cost</h3><div class="total">${money(q.total)}</div><ul>${items}</ul>${note}<div class="hint">Estimates use catalog prices; your provider bill is the source of truth.</div>`;
+}
+async function estimate(form) {
+  const {wf, params, counts} = collect(form);
+  const box = $(".estimate", form);
+  try { box.innerHTML = renderQuote(await api("/api/estimate", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({workflow: wf, params, counts})})); }
+  catch (e) { box.innerHTML = `<h3>Estimated cost</h3><div class="note">${esc(e.message)}</div>`; }
+}
+
+async function submit(form, confirm = false) {
+  const {wf, params, files} = collect(form);
+  const fd = new FormData();
+  fd.append("workflow", wf); fd.append("params", JSON.stringify(params)); fd.append("confirm", confirm ? "true" : "false");
+  for (const [k, list] of Object.entries(files)) list.forEach(f => fd.append(k, f));
+  const btn = $("button[type=submit]", form); btn.disabled = true;
+  try {
+    const job = await api("/api/jobs", {method: "POST", body: fd});
+    toast("Started. Following it in the Library.");
+    currentJob = job.id; showTab("library");
+  } catch (e) {
+    if (e.status === 402 && e.data.needs_confirmation) {
+      if (await confirmSpend(e.data.quote.total, renderQuote(e.data.quote))) return submit(form, true);
+    } else toast(e.message, 7000);
+  } finally { btn.disabled = false; loadStatus(); }
+}
+function confirmSpend(total, html) {
+  return new Promise(res => {
+    const d = $("#confirmDialog"); $("#confirmBody").innerHTML = html || `<p>This step is estimated at <b>${money(total)}</b>.</p>`;
+    $("#confirmYes").onclick = () => { d.close(); res(true); };
+    $("#confirmNo").onclick = () => { d.close(); res(false); };
+    d.showModal();
+  });
+}
+
+/* ---------- library ---------- */
+function thumbOf(job) {
+  const outs = job.outputs || [];
+  const img = outs.find(o => o.path === "thumbnail.jpg") || outs.find(o => o.label === "Shot 1 keyframe") || outs.find(o => o.kind === "image");
+  return img ? img.url : null;
+}
+async function loadLibrary(openCurrent = true) {
+  const list = await api("/api/jobs");
+  $("#libCount").textContent = list.length ? `${list.length} recent` : "";
+  $("#cards").innerHTML = list.length ? list.map(j => {
+    const t = thumbOf(j);
+    const title = j.params.idea || j.params.prompt || (j.plan && j.plan.title) || j.workflow;
+    return `<div class="card" data-id="${j.id}"><div class="thumb" style="${t ? `background-image:url('${t}')` : ""}">${t ? "" : j.workflow}</div>
+      <div class="meta"><div><span class="badge ${j.state}">${j.state.replace("_", " ")}</span> <span class="muted">${j.workflow} · ${money(j.spent)}</span></div><div>${esc(title)}</div></div></div>`;
+  }).join("") : `<p class="muted">No jobs yet. Make something in Short Maker.</p>`;
+  $$("#cards .card").forEach(c => c.onclick = () => openJob(c.dataset.id));
+  if (currentJob && openCurrent) openJob(currentJob);
+}
+async function openJob(id) {
+  currentJob = id; clearTimeout(detailTimer);
+  let job;
+  try { job = await api("/api/jobs/" + id); } catch (e) { $("#detail").style.display = "none"; return; }
+  renderDetail(job);
+  if (job.active || job.state === "running" || job.state === "queued") detailTimer = setTimeout(() => { if ($("#tab-library").classList.contains("active")) { openJob(id); refreshCard(job); } }, 2000);
+  else refreshCard(job);
+}
+async function refreshCard(job) { const c = $(`.card[data-id="${job.id}"] .badge`); if (c && c.textContent !== job.state.replace("_", " ")) loadLibrary(false); }
+
+function renderDetail(job) {
+  const d = $("#detail"); d.style.display = "block";
+  const title = job.params.idea || job.params.prompt || job.workflow;
+  const outs = [...(job.outputs || [])].sort((a, b) => (b.final ? 1 : 0) - (a.final ? 1 : 0));
+  const poster = (outs.find(o => o.path === "thumbnail.jpg") || {}).url;
+  const media = o => o.kind === "video" ? `<video src="${o.url}" controls playsinline preload="metadata" ${poster && o.final ? `poster="${poster}"` : ""}></video>` : o.kind === "image" ? `<img src="${o.url}" loading="lazy" alt="">` : "";
+  const est = job.estimate ? money(job.estimate.total) : "–";
+  let html = `<div class="flex"><h2 style="margin:0;font-size:18px">${esc(title)}</h2><span class="badge ${job.state}">${job.state.replace("_", " ")}</span></div>
+    <p class="muted">${job.workflow} · job ${job.id} · estimated ${est} · logged spend ${money(job.spent)} · ${esc(job.status)}</p>`;
+  if (job.warning) html += `<div class="note">${esc(job.warning)}</div>`;
+  if (job.state === "awaiting_approval" && job.awaiting)
+    html += `<div class="banner"><div style="flex:1">${esc(job.awaiting.message)}</div><button class="btn" id="approveBtn">Approve${job.awaiting.estimate ? " · " + money(job.awaiting.estimate) : ""}</button></div>`;
+  if (job.state === "error")
+    html += `<div class="banner error"><div style="flex:1">${esc(job.error || job.status)}</div><button class="btn ghost small" id="retryBtn">Retry failed steps</button></div>`;
+  if (job.workflow === "short" && job.plan && job.state !== "running") html += storyboard(job);
+  html += `<div class="outputs">${outs.filter(o => o.kind !== "file" && !/^Shot \d+ keyframe$/.test(o.label) || o.final).map(o => `<div class="out ${o.final ? "final" : ""}">${media(o)}<div class="lbl"><span>${esc(o.label)}</span><a href="${o.url}" download>Download</a></div></div>`).join("")}</div>`;
+  const filesOut = outs.filter(o => o.kind === "file");
+  if (filesOut.length) html += `<p>${filesOut.map(o => `<a href="${o.url}" target="_blank" style="color:var(--accent2);margin-right:14px">${esc(o.label)}</a>`).join("")}</p>`;
+  html += `<div class="flex" style="margin-top:14px">${job.active ? "" : `<button class="btn ghost small" id="resumeBtn">Resume</button><button class="btn ghost small" id="deleteBtn">Delete</button>`}</div>
+    <details><summary>Log</summary><div class="log">${esc((job.log || []).join("\n"))}</div></details>`;
+  d.innerHTML = html;
+  const post = (path, body) => api(`/api/jobs/${job.id}/${path}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+  $("#approveBtn", d)?.addEventListener("click", async () => { await post("approve", {stage: job.awaiting.stage}); openJob(job.id); loadStatus(); });
+  $("#retryBtn", d)?.addEventListener("click", async () => { if (await confirmSpend(0, "<p>Retry resubmits failed steps and may cost money again.</p>")) { await post("retry", {}); openJob(job.id); } });
+  $("#resumeBtn", d)?.addEventListener("click", async () => { await post("resume"); openJob(job.id); });
+  $("#deleteBtn", d)?.addEventListener("click", async () => { if (confirm("Delete this job and its files?")) { await api("/api/jobs/" + job.id, {method: "DELETE"}); currentJob = null; d.style.display = "none"; loadLibrary(); } });
+  $$(".redoShot", d).forEach(b => b.addEventListener("click", async () => {
+    const i = b.dataset.i, card = b.closest(".shot");
+    const edits = {visual: $("[data-f=visual]", card).value, narration: $("[data-f=narration]", card).value, motion: $("[data-f=motion]", card).value};
+    try { await post("redo", {steps: [`key-${i}`], overrides: {[i]: edits}}); toast(`Regenerating shot ${+i + 1}`); openJob(job.id); } catch (e) { toast(e.message); }
+  }));
+}
+function storyboard(job) {
+  const keys = Object.fromEntries((job.outputs || []).filter(o => /^Shot \d+ keyframe$/.test(o.label)).map(o => [Number(o.label.split(" ")[1]) - 1, o.url]));
+  const shots = job.plan.shots.map((s, i) => `<div class="shot">${keys[i] ? `<img src="${keys[i]}?v=${encodeURIComponent(job.updated)}" alt="">` : ""}
+    <label>Shot ${i + 1} visual</label><textarea data-f="visual">${esc(s.visual)}</textarea>
+    <label>Narration</label><textarea data-f="narration">${esc(s.narration)}</textarea>
+    <label>Motion</label><textarea data-f="motion">${esc(s.motion)}</textarea>
+    <button class="btn ghost small redoShot" data-i="${i}" style="margin-top:8px">Redo this shot</button></div>`).join("");
+  return `<details ${job.state === "awaiting_approval" ? "open" : ""}><summary>Storyboard · ${esc(job.plan.title)} (edit a shot, then redo it)</summary><div class="shots">${shots}</div></details>`;
+}
+
+/* ---------- settings ---------- */
+async function loadSettings() {
+  const s = await api("/api/settings");
+  const labels = {FAL_KEY: "fal.ai key", REPLICATE_API_TOKEN: "Replicate token", ENHANCOR_API_KEY: "Enhancor key", ANTHROPIC_API_KEY: "Anthropic (Claude) key"};
+  $("#keyFields").innerHTML = Object.entries(labels).map(([k, l]) => `<label>${l} ${s.keys[k] ? '<span style="color:var(--good)">✓ set</span>' : ""}</label><input type="password" autocomplete="off" data-key="${k}" placeholder="${s.keys[k] ? "•••••••• (unchanged)" : "paste key"}">`).join("");
+  const budgetNames = {MW_DAILY_BUDGET: "Daily budget ($)", MW_MAX_COST_PER_JOB: "Max per job ($)", MW_CONFIRM_ABOVE: "Ask before spending over ($)", MW_DEFAULT_TIER: "Default tier"};
+  $("#budgetFields").innerHTML = Object.entries(budgetNames).map(([k, l]) => `<div><label>${l}</label><input type="text" data-setting="${k}" value="${esc(s.settings[k])}"></div>`).join("");
+  $("#modelTable").innerHTML = `<tr><th>Kind</th><th>Tier</th><th>Model</th><th>Price</th><th>Provider</th><th>Notes</th></tr>` +
+    MODELS.slice().sort((a, b) => a.kind.localeCompare(b.kind)).map(m => `<tr><td>${m.kind}</td><td>${m.tier}</td><td>${esc(m.name)}<br><small class="muted">${m.id}</small></td><td>${m.price_label}</td><td>${m.provider} ${m.available ? "✓" : ""}</td><td class="muted">${esc(m.notes)}</td></tr>`).join("");
+}
+$("#saveSettings").onclick = async () => {
+  const keys = {}, settings = {};
+  $$("[data-key]").forEach(i => { if (i.value.trim()) keys[i.dataset.key] = i.value.trim(); });
+  $$("[data-setting]").forEach(i => settings[i.dataset.setting] = i.value.trim());
+  try { await api("/api/settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({keys, settings})}); toast("Saved."); await boot(true); loadSettings(); }
+  catch (e) { toast(e.message); }
+};
+
+async function boot(again = false) {
+  await loadStatus();
+  MODELS = await api("/api/models");
+  fillModelSelects();
+  if (!again) setupForms(); else $$("form[data-workflow]").forEach(estimate);
+}
+boot().then(() => { let t = "short"; try { t = localStorage.getItem("mw-tab") || t; } catch (e) {} showTab(t); });
+setInterval(() => { if ($("#tab-library").classList.contains("active") && !document.hidden) loadLibrary(false).catch(() => {}); }, 8000);
+</script>
+</body>
+</html>

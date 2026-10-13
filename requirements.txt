@@ -1,0 +1,8 @@
+# Tested versions (Python 3.13). `pip install -e .` uses the ranges in pyproject.toml.
+fastapi==0.143.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+requests==2.34.2
+pillow==12.3.0
+anthropic==1.13.0
+httpx==0.28.1

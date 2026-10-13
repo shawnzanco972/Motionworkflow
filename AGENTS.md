@@ -1,0 +1,36 @@
+# Agent guide
+
+Rules for any coding agent (Claude Code, Codex, …) operating MotionWorkflow for the user. The skill in `.claude/skills/motionworkflow/SKILL.md` has the step-by-step recipes.
+
+## Setup requests
+
+1. Run `./setup.sh`. It creates `.venv`, installs the package, and creates `.env` from `.env.example` only if `.env` is absent. Never overwrite an existing `.env`.
+2. Ask the user to put keys into `.env` or the app's Settings tab themselves. Never ask for keys in chat, print them, or commit `.env`.
+3. Verify with `.venv/bin/mw doctor` and `.venv/bin/python -m unittest discover -s tests`. Neither spends money.
+4. Start the app with `./start.sh` (port 8770; `PORT=8771 ./start.sh` if busy) and report the URL.
+5. Do not generate paid media during setup.
+
+## Spending rules
+
+- Always show the estimate first (`--estimate`), and get the user's go-ahead for anything above `MW_CONFIRM_ABOVE`. An explicit "go ahead, up to $X" counts; don't ask again within that scope.
+- Never raise `MW_DAILY_BUDGET` / `MW_MAX_COST_PER_JOB` or pass `--yes` on the user's behalf beyond what they authorized.
+- Approval gates (`storyboard`, `final`) belong to the user. Show them the storyboard / draft (paths are printed by `mw status`) and wait for approval unless they already said to proceed without review.
+- Never resubmit to dodge a failure. `mw resume` only polls. `mw retry` resubmits failed steps (spends again). `mw retry --force` is only for steps whose outcome was unclear, and only after the user checked the provider dashboard.
+
+## Creative rules
+
+- Show the script (`mw status <job>` prints shots) before animating.
+- Keep characters consistent with `--character` (Short Maker) or `--ref` (Image).
+- For Character Swap, use only people the user has the right to depict; image references use Seedance Edit, a video identity reference uses Seedance multi_reference (Omni). The final always carries the source's original audio.
+- Look at outputs before calling them done. If a frame is wrong, `mw redo <job> key-N` (with `--shot N --visual ...` to change the prompt) instead of regenerating the whole job.
+
+## Code map
+
+- `motionworkflow/models.json` — model catalog, tier defaults, price estimates. `models.local.json` overrides it.
+- `motionworkflow/catalog.py` — tier resolution, param mapping, cost estimates.
+- `motionworkflow/providers/` — fal, Replicate, Enhancor, Pollinations, Mock.
+- `motionworkflow/workflows/common.py` — `generate()`: the only code path that spends money; idempotent per step.
+- `motionworkflow/workflows/{image,video,short,swap}.py` — the four workflows.
+- `motionworkflow/media.py` — ffmpeg editing (Ken Burns, concat, mix/ducking, captions, audio restore).
+- `motionworkflow/server.py` + `static/index.html` — local web app. `cli.py` — `mw` command.
+- Tests in `tests/` run offline with the mock provider.

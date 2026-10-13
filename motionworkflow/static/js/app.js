@@ -4,6 +4,7 @@ import { $, $$, api, esc, icon, money, onState, refreshLibrary, refreshModels, r
 import { renderCreatePage } from "./forms.js";
 import { assets, home, project, projects, settings } from "./pages.js";
 import { SERVICES } from "./services.js";
+import { spending } from "./spending.js";
 
 const page = $("#page");
 let cleanup = null;
@@ -39,6 +40,7 @@ function drawShell() {
   nav.textContent = waiting ? `${waiting} to approve` : working ? `${working} working` : "";
   const lib = st.library.avatars + st.library.voices;
   $("#navAssets").textContent = lib ? String(lib) : "";
+  $("#navSpend").textContent = b.spent_today > 0 ? `${money(b.spent_today)} today` : "";
 }
 
 async function route() {
@@ -72,6 +74,9 @@ async function route() {
     } else if (key === "assets") {
       setCrumbs([{ label: "Avatars & voices" }]);
       await assets(page);
+    } else if (key === "spending") {
+      setCrumbs([{ label: "Spending" }]);
+      cleanup = await spending(page, query);
     } else if (key === "settings") {
       setCrumbs([{ label: "Settings", href: "#/settings" }, { label: { keys: "API keys", budget: "Budget & defaults", models: "Models & prices", skills: "Skills & tools", appearance: "Appearance" }[parts[1] || "keys"] || "Settings" }]);
       await settings(page, parts[1]);

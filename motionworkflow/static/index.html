@@ -79,15 +79,16 @@
       </div>
       <div class="nav-group">
         <div class="nav-label">Account</div>
+        <a href="#/spending" data-route="spending"><svg class="icon"><use href="#i-wallet"/></svg>Spending<span class="count" id="navSpend"></span></a>
         <a href="#/settings" data-route="settings"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
       </div>
     </nav>
     <div class="sidebar-foot">
-      <div class="meter" aria-live="polite">
+      <a class="meter" href="#/spending" aria-live="polite" title="See where the money went">
         <div class="meter-row"><span>Spent today</span><span><b id="spentToday">$0.00</b> / <span id="dailyBudget">$10</span></span></div>
         <div class="meter-bar"><i id="spentBar"></i></div>
         <div class="providers" id="providerDots"></div>
-      </div>
+      </a>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>

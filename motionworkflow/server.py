@@ -92,14 +92,51 @@ def _thumb(data: dict) -> str | None:
     return None
 
 
-def _public(job: jobs.Job) -> dict:
+def _public(job: jobs.Job, ledger: list[dict] | None = None, full: bool = True) -> dict:
+    """A job as the browser sees it. Lists pass the job's ledger rows in (read once) and skip the detail."""
     data = job.public()
+    if ledger is None:
+        ledger = budget.job_entries(job.id)
     data["active"] = workflows.is_active(job.id)
-    data["spent"] = round(budget.spent_on_job(job.id), 4)
+    data["spent"] = round(sum(r.get("usd", 0) for r in ledger), 4)
     data["title"] = _title(job)
     data["thumb"] = _thumb(data)
+    data["cost"] = _cost(job, data, ledger) if full else {
+        "estimate": (data.get("estimate") or {}).get("total"), "spent": data["spent"],
+        "next": (data.get("awaiting") or {}).get("estimate")}
     data.pop("traceback", None)
+    if not full:
+        data.pop("log", None)
     return data
+
+
+def _cost(job: jobs.Job, data: dict, ledger: list[dict]) -> dict:
+    """Planned vs spent, per step, plus what the next approval will cost."""
+    per_step: dict[str, float] = {}
+    for row in ledger:
+        key = budget.step_of(row.get("note", ""))
+        per_step[key] = per_step.get(key, 0) + row.get("usd", 0)
+    steps = []
+    for key, step in job.data.get("steps", {}).items():
+        steps.append({"key": key, "label": step.get("label") or key, "model": step.get("model"),
+                      "state": step.get("state"), "estimate": step.get("estimate"),
+                      "spent": round(per_step.pop(key, 0.0), 4)})
+    for key, usd in per_step.items():  # e.g. prep, review
+        if abs(usd) > 1e-9:
+            steps.append({"key": key, "label": {"review": "Fresh-eyes review", "prep": "Genjutsu prep"}.get(key, key),
+                          "model": None, "state": "done", "estimate": None, "spent": round(usd, 4)})
+    quote = data.get("estimate") or {}
+    awaiting = data.get("awaiting") or {}
+    spent = round(sum(r.get("usd", 0) for r in ledger), 4)
+    return {
+        "estimate": quote.get("total"),
+        "planned": quote.get("items", []),
+        "spent": spent,
+        "next": awaiting.get("estimate"),
+        "steps": steps,
+        "ledger": ledger[::-1],
+        "mock": bool(job.data.get("used_mock")),
+    }
 
 
 # -- pages and files ---------------------------------------------------------
@@ -153,6 +190,23 @@ def _job_counts() -> dict:
     return counts
 
 
+@app.get("/api/spend")
+def spend(days: int = 14):
+    data = budget.summary(max(7, min(90, days)))
+    titles = {}
+    for job in jobs.all_jobs(1000):
+        titles[job.id] = {"title": _title(job), "workflow": job.data["workflow"]}
+    by_workflow: dict[str, float] = {}
+    for job_id, usd in data.pop("by_job").items():
+        wf = titles.get(job_id, {}).get("workflow", "deleted")
+        by_workflow[wf] = by_workflow.get(wf, 0) + usd
+    data["by_workflow"] = sorted(({"workflow": k, "usd": round(v, 4)} for k, v in by_workflow.items() if abs(v) > 1e-9),
+                                 key=lambda x: -x["usd"])
+    for row in data["recent"]:
+        row.update(titles.get(row.get("job"), {"title": "Deleted project", "workflow": None}))
+    return data
+
+
 @app.get("/api/models")
 def models(kind: str | None = None):
     items = catalog.for_kind(kind) if kind else catalog.models()
@@ -170,7 +224,10 @@ async def estimate(request: Request):
 
 @app.get("/api/jobs")
 def list_jobs(limit: int = 60):
-    return [_public(j) for j in jobs.all_jobs(limit)]
+    by_job: dict[str, list[dict]] = {}
+    for row in budget.entries():
+        by_job.setdefault(row.get("job"), []).append(row)
+    return [_public(j, by_job.get(j.id, []), full=False) for j in jobs.all_jobs(max(1, min(500, limit)))]
 
 
 @app.get("/api/jobs/{job_id}")

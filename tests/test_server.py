@@ -68,6 +68,43 @@ class ServerTests(IsolatedTest):
         job = self.wait(job["id"], ("done", "error"))
         self.assertEqual(job["state"], "done")
 
+    def test_cost_breakdown_and_spend_summary(self):
+        from motionworkflow import budget
+
+        r = self.client.post("/api/jobs", data={"workflow": "image", "params": json.dumps({"prompt": "cat", "model": "mock:image"})})
+        job = self.wait(r.json()["id"])
+        budget.charge(job["id"], "fal:flux-schnell", 0.25, note="image-1")
+        budget.charge(job["id"], "fal:flux-schnell", 0.10, note="image-2")
+        budget.refund(job["id"], "fal:flux-schnell", 0.10, note="image-2: rejected")
+        budget.charge(job["id"], "claude:review", 0.03, note="review")
+        cost = self.client.get(f"/api/jobs/{job['id']}").json()["cost"]
+        self.assertAlmostEqual(cost["spent"], 0.28)
+        self.assertEqual(len(cost["ledger"]), 4)
+        self.assertEqual(cost["ledger"][0]["note"], "review")  # newest first
+        extra = {s["key"]: s for s in cost["steps"]}
+        self.assertAlmostEqual(extra["review"]["spent"], 0.03)
+        self.assertEqual(extra["review"]["label"], "Fresh-eyes review")
+        self.assertTrue(cost["mock"])
+
+        spend = self.client.get("/api/spend?days=3").json()
+        self.assertEqual(len(spend["by_day"]), 7)  # clamped to at least a week
+        self.assertAlmostEqual(spend["today"], 0.28)
+        self.assertAlmostEqual(spend["by_day"][-1]["usd"], 0.28)
+        self.assertEqual(spend["by_workflow"], [{"workflow": "image", "usd": 0.28}])
+        self.assertEqual(spend["recent"][0]["title"], job["title"])
+        self.assertNotIn("by_job", spend)
+        # A deleted project keeps its spend, labelled as deleted.
+        self.client.delete(f"/api/jobs/{job['id']}")
+        spend = self.client.get("/api/spend").json()
+        self.assertEqual(spend["by_workflow"][0]["workflow"], "deleted")
+        self.assertEqual(spend["recent"][0]["title"], "Deleted project")
+
+    def test_spend_with_empty_ledger(self):
+        spend = self.client.get("/api/spend").json()
+        self.assertEqual(spend["all_time"], 0)
+        self.assertEqual(len(spend["by_day"]), 14)
+        self.assertEqual(spend["recent"], [])
+
     def test_rejects_bad_upload_type(self):
         files = {"refs": ("x.exe", b"MZ", "application/octet-stream")}
         r = self.client.post("/api/jobs", data={"workflow": "image", "params": "{}"}, files=files)

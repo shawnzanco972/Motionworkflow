@@ -9,13 +9,26 @@ import { BLURBS, ORDER, SERVICES } from "./services.js";
 
 const wf = (name) => WORKFLOWS[name] || { label: name, icon: "spark", color: "c1" };
 
+const BUSY = (j) => j.active || j.state === "running" || j.state === "queued";
+
+// "$0.28", "$0.10 of ~$1.20", "Free": what a project cost, at a glance.
+function costTag(j) {
+  const c = j.cost || {};
+  const spent = Number(c.spent ?? j.spent) || 0;
+  const est = c.estimate;
+  if (j.state !== "done" && est > 0 && spent < est - 0.0005) {
+    return `<span class="cost-tag" title="Spent so far, of the estimate">${money(spent)}<span class="of"> of ~${money(est)}</span></span>`;
+  }
+  return `<span class="cost-tag" title="Logged spend">${spent > 0 ? money(spent) : "Free"}</span>`;
+}
+
 function projectCard(j) {
   const w = wf(j.workflow);
   const cover = j.thumb ? `style="background-image:url('${j.thumb}')"` : "";
   return `<a class="pcard" href="#/projects/${j.id}">
     <div class="cover" ${cover}>${j.thumb ? "" : icon(w.icon, "xl")}<span class="status">${badge(j.state)}</span></div>
     <div class="body"><div class="t">${esc(j.title)}</div>
-    <div class="m">${icon(w.icon)}<span>${w.label}</span><span>·</span><span>${timeAgo(j.created)}</span><span style="margin-left:auto">${money(j.spent)}</span></div></div></a>`;
+    <div class="m">${icon(w.icon)}<span>${w.label}</span><span>·</span><span>${timeAgo(j.created)}</span>${costTag(j)}</div></div></a>`;
 }
 
 const emptyState = (iconName, title, text, action = "") => `<div class="empty">${icon(iconName)}<b>${title}</b><div>${text}</div>${action ? `<div style="margin-top:16px">${action}</div>` : ""}</div>`;
@@ -71,6 +84,7 @@ export async function projects(page, query) {
   const jobs = await api("/api/jobs?limit=200");
   const filters = [["all", "All"], ["awaiting_approval", "Needs approval"], ["running", "Working"], ["done", "Done"], ["error", "Failed"]];
   const shown = jobs.filter((j) => (filter === "all" || j.state === filter || (filter === "running" && j.state === "queued")) && (!kind || j.workflow === kind));
+  const shownSpend = shown.reduce((a, j) => a + (j.cost?.spent || 0), 0);
   page.innerHTML = `
     <div class="page-head"><div class="titles"><h1 class="page-title">Projects</h1><p class="page-sub">Everything you've made. Open one to watch it, approve the next step, or fix a part.</p></div>
       <a class="btn primary" href="#/create/presenter">${icon("plus")}New</a></div>
@@ -78,6 +92,7 @@ export async function projects(page, query) {
       <div class="chips" role="tablist">${filters.map(([v, l]) => { const n = v === "all" ? jobs.length : jobs.filter((j) => j.state === v || (v === "running" && j.state === "queued")).length;
         return `<a class="chip ${v === filter ? "active" : ""}" href="#/projects?f=${v}${kind ? `&type=${kind}` : ""}" role="tab" aria-selected="${v === filter}">${l} <span class="muted">${n}</span></a>`; }).join("")}</div>
       <div class="spacer" style="flex:1"></div>
+      <a class="muted small" href="#/spending" title="See spending">${shown.length} project${shown.length === 1 ? "" : "s"} · ${money(shownSpend)} spent</a>
       <select class="select" style="width:auto" aria-label="Type" id="typeFilter"><option value="">All types</option>${Object.entries(WORKFLOWS).map(([k, w]) => `<option value="${k}" ${k === kind ? "selected" : ""}>${w.label}</option>`).join("")}</select>
     </div>
     ${shown.length ? `<div class="cards">${shown.map(projectCard).join("")}</div>`
@@ -94,6 +109,25 @@ const STAGE_TEXT = {
   mask: ["Review the prepared clip", "Watch the WHOLE Genjutsu prep: mask coverage (hair, hands, clothes, edges, spill, flicker) or face tracking. Approve only if it's clean."],
 };
 
+const STEP_GROUP = {
+  image: "Images", key: "Keyframes", voice: "Voice", clip: "Animated shots", face: "Avatar animation",
+  broll: "Cutaway images", draft: "Draft", final: "Final render", review: "Fresh-eyes review", prep: "Genjutsu prep",
+};
+const stepLabel = (note) => {
+  const [key, why] = String(note || "").split(":").map((x) => x.trim());
+  const m = key.match(/^(.*)-(\d+)$/);
+  const base = m ? `${STEP_GROUP[m[1]] || m[1]} ${Number(m[2]) + 1}` : STEP_GROUP[key] || key || "Charge";
+  return why ? `${base} (refund: ${why})` : base;
+};
+const modelName = (id) => (state.models.find((m) => m.id === id)?.name) || (id === "claude:review" ? "Claude reviewer" : id || "");
+
+function costPill(j) {
+  const c = j.cost || {};
+  const est = c.estimate;
+  const text = est > 0 && j.state !== "done" ? `${money(c.spent)} of ~${money(est)}` : money(c.spent);
+  return `<span class="cost-pill" title="Spent so far${est > 0 ? ", of the estimated total" : ""}">${icon("wallet")}${text}</span>`;
+}
+
 export async function project(page, id, setCrumb) {
   let job;
   let dirty = false;
@@ -109,7 +143,7 @@ export async function project(page, id, setCrumb) {
   function steps() {
     const items = Object.entries(job.steps || {});
     if (!items.length) return `<p class="muted small" style="margin:0">${esc(job.status)}</p>`;
-    return `<ol class="progress-steps">${items.map(([key, s]) => `<li class="${s.state}"><span class="st"></span><div class="lbl">${esc(s.label || key)}<span>${esc(s.model || "")}${s.estimate ? ` · ~${money(s.estimate)}` : ""}${s.error ? ` · ${esc(s.error)}` : ""}</span></div></li>`).join("")}</ol>`;
+    return `<ol class="progress-steps">${items.map(([key, s]) => `<li class="${s.state}"><span class="st"></span><div class="lbl">${esc(s.label || key)}<span>${esc(modelName(s.model))}${s.estimate ? ` · ~${money(s.estimate)}` : ""}${s.error ? ` · ${esc(s.error)}` : ""}</span></div></li>`).join("")}</ol>`;
   }
 
   function mainMedia() {
@@ -186,14 +220,46 @@ export async function project(page, id, setCrumb) {
     return `<div class="section-title" style="margin-top:26px"><h2 class="h2">Parts</h2></div><div class="gallery">${outs.map((o) => `<div class="tile">${o.kind === "video" ? `<video src="${o.url}" controls preload="metadata" playsinline></video>` : o.kind === "audio" ? `<div style="padding:12px"><audio src="${o.url}" controls style="width:100%"></audio></div>` : `<img src="${o.url}" alt="" loading="lazy">`}<div class="cap"><span>${esc(o.label)}</span><a href="${o.url}" download aria-label="Download ${esc(o.label)}">${icon("download")}</a></div></div>`).join("")}</div>`;
   }
 
+  function costCard() {
+    const c = job.cost || {};
+    const est = c.estimate;
+    const spent = c.spent || 0;
+    const pct = est > 0 ? Math.min(100, (spent / est) * 100) : spent > 0 ? 100 : 0;
+    const over = est > 0 && spent > est * 1.05;
+    // Group numbered steps (voice-0, voice-1 …) so a 20-line script is one row, not twenty.
+    const groups = [];
+    for (const st of c.steps || []) {
+      const prefix = st.key.replace(/-\d+$/, "");
+      let g = groups.find((x) => x.prefix === prefix);
+      if (!g) groups.push((g = { prefix, label: STEP_GROUP[prefix] || st.label, n: 0, est: 0, spent: 0, states: [], models: new Set() }));
+      g.n += 1; g.est += st.estimate || 0; g.spent += st.spent || 0; g.states.push(st.state);
+      if (st.model) g.models.add(modelName(st.model));
+    }
+    const rows = groups.map((g) => {
+      const st = g.states.includes("failed") ? "failed" : g.states.every((x) => x === "done") ? "done" : g.states.some((x) => x === "running" || x === "submitting") ? "running" : "pending";
+      return `<tr><td><span class="sdot ${st}" aria-hidden="true"></span><span class="sr-only">${{ done: "Done", failed: "Failed", running: "Running", pending: "Not started" }[st]}: </span>${esc(g.label)}${g.n > 1 ? ` <span class="muted">×${g.n}</span>` : ""}<div class="muted small">${esc([...g.models].join(", "))}</div></td>
+        <td class="num muted">${g.est ? "~" + money(g.est) : "–"}</td><td class="num">${money(g.spent)}</td></tr>`;
+    }).join("");
+    const planned = !groups.length && (c.planned || []).length
+      ? `<ul class="lines" style="padding:0;margin-top:12px">${c.planned.map((i) => `<li><div class="what"><b>${esc(i.label)}</b><span>${esc(i.model_name || "")}</span></div><div class="usd">${money(i.usd)}</div></li>`).join("")}</ul>` : "";
+    const ledger = (c.ledger || []).map((r) => `<li><div class="what"><b>${esc(stepLabel(r.note))}</b><span>${esc(modelName(r.model))} · ${timeAgo(r.at)}</span></div><div class="usd ${r.usd < 0 ? "refund" : ""}">${r.usd < 0 ? "−" + money(-r.usd) : money(r.usd)}</div></li>`).join("");
+    return `<div class="card pad cost-card"><div class="h2" style="font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:8px">${icon("wallet")}Cost</div>
+      <div class="cost-hero"><div><div class="v">${money(spent)}</div><div class="muted small">spent so far</div></div>
+        ${est > 0 ? `<div style="text-align:right"><div class="v2">~${money(est)}</div><div class="muted small">estimated total</div></div>` : ""}</div>
+      ${est > 0 ? `<div class="meter-bar ${over ? "over" : ""}" role="img" aria-label="${Math.round(pct)}% of the estimate spent"><i style="width:${pct}%"></i></div>` : `<div style="height:10px"></div>`}
+      ${c.next ? `<div class="next-cost">${icon("alert")}<span>Approving the next step costs about <b>${money(c.next)}</b>.</span></div>` : ""}
+      ${rows ? `<table class="cost-steps"><thead><tr><th>Step</th><th class="num">Est.</th><th class="num">Spent</th></tr></thead><tbody>${rows}</tbody></table>` : planned}
+      ${ledger ? `<details class="more" style="border:0;margin:12px 0 0;padding:0"><summary>${icon("chev")}Charges (${c.ledger.length})</summary><div class="inner"><ul class="lines" style="padding:0">${ledger}</ul></div></details>` : ""}
+      ${c.mock ? `<div class="notice warn" style="margin-top:12px">${icon("key")}<span>Parts of this used free placeholder media. Add an API key for real results.</span></div>`
+        : `<p class="muted small" style="margin:12px 0 0">Estimates from catalog prices, logged when each request is sent. Your provider's bill is the source of truth.</p>`}
+    </div>`;
+  }
+
   function side() {
     const files = (job.outputs || []).filter((o) => o.kind === "file");
-    const est = job.estimate?.total;
     return `<div class="grid" style="gap:16px">
+      ${costCard()}
       <div class="card pad"><div class="h2" style="font-size:14px;margin-bottom:8px">Progress</div>${steps()}</div>
-      <div class="card pad"><div class="h2" style="font-size:14px;margin-bottom:10px">Cost</div>
-        <dl class="kv"><dt>Estimated</dt><dd>${est !== undefined && est !== null ? money(est) : "–"}</dd><dt>Logged spend</dt><dd>${money(job.spent)}</dd>${job.awaiting?.estimate ? `<dt>Next step</dt><dd>~${money(job.awaiting.estimate)}</dd>` : ""}</dl>
-        ${job.used_mock ? `<div class="notice warn" style="margin-top:12px">${icon("key")}<span>Made with placeholder media. Add an API key for real results.</span></div>` : ""}</div>
       ${files.length ? `<div class="card pad"><div class="h2" style="font-size:14px;margin-bottom:8px">Files</div><div class="grid" style="gap:6px">${files.map((f) => `<a class="btn ghost sm" style="justify-content:flex-start" href="${f.url}" target="_blank" rel="noopener">${icon("script")}${esc(f.label)}</a>`).join("")}</div></div>` : ""}
       <div class="card pad"><details class="more" style="border:0;margin:0;padding:0"><summary>${icon("chev")}Activity log</summary><div class="inner"><div class="log">${esc((job.log || []).join("\n"))}</div></div></details></div>
     </div>`;
@@ -208,7 +274,7 @@ export async function project(page, id, setCrumb) {
       <div class="page-head"><div class="titles">
         <div class="eyebrow">${icon(w.icon)}${w.label}</div>
         <h1 class="page-title">${esc(job.title)}</h1>
-        <div class="flex" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">${badge(job.state)}<span class="muted small">${timeAgo(job.created)}${busy ? ` · ${esc(job.status)}` : ""}</span></div></div>
+        <div class="flex" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">${badge(job.state)}${costPill(job)}<span class="muted small">${timeAgo(job.created)}${busy ? ` · ${esc(job.status)}` : ""}</span></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${final ? `<a class="btn primary" href="${final.url}" download>${icon("download")}Download</a>` : ""}
           ${!job.active && (job.state === "running" || job.state === "queued") ? `<button class="btn" data-act="resume">${icon("refresh")}Resume</button>` : ""}

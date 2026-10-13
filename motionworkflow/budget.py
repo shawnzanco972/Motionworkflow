@@ -106,3 +106,50 @@ def report() -> dict:
         "confirm_above": config.number("MW_CONFIRM_ABOVE"),
         "all_time": round(sum(r.get("usd", 0) for r in entries()), 4),
     }
+
+
+def job_entries(job_id: str) -> list[dict]:
+    return [r for r in entries() if r.get("job") == job_id]
+
+
+def step_of(note: str) -> str:
+    """Ledger notes are '<step>' or '<step>: <reason>' (refunds)."""
+    return (note or "").split(":", 1)[0].strip()
+
+
+def summary(days: int = 14) -> dict:
+    """Totals for the Spending page. Amounts are the estimates logged at request time."""
+    from datetime import timedelta
+
+    rows = entries()
+    today = datetime.now(timezone.utc).date()
+
+    def since(n: int) -> float:
+        first = (today - timedelta(days=n - 1)).isoformat()
+        return round(sum(r.get("usd", 0) for r in rows if r.get("at", "")[:10] >= first), 4)
+
+    by_day = {(today - timedelta(days=i)).isoformat(): 0.0 for i in range(days - 1, -1, -1)}
+    count = dict.fromkeys(by_day, 0)
+    for r in rows:
+        d = r.get("at", "")[:10]
+        if d in by_day:
+            by_day[d] += r.get("usd", 0)
+            count[d] += r.get("usd", 0) > 0
+    by_model: dict[str, float] = {}
+    by_job: dict[str, float] = {}
+    for r in rows:
+        by_model[r.get("model", "?")] = by_model.get(r.get("model", "?"), 0) + r.get("usd", 0)
+        by_job[r.get("job", "?")] = by_job.get(r.get("job", "?"), 0) + r.get("usd", 0)
+    return {
+        "today": since(1),
+        "week": since(7),
+        "month": since(30),
+        "all_time": round(sum(r.get("usd", 0) for r in rows), 4),
+        "by_day": [{"date": k, "usd": round(v, 4), "count": count[k]} for k, v in by_day.items()],
+        "charges": sum(1 for r in rows if r.get("usd", 0) > 0),
+        "by_model": sorted(({"model": k, "usd": round(v, 4)} for k, v in by_model.items() if abs(v) > 1e-9),
+                           key=lambda x: -x["usd"]),
+        "by_job": by_job,
+        "recent": rows[-100:][::-1],
+        "limits": report(),
+    }

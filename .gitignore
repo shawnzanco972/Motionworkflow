@@ -9,3 +9,7 @@ runs/
 build/
 dist/
 .DS_Store
+# Fetched by scripts/install-skills.sh (upstream licences exclude their names, logos and media)
+.claude/skills/take-one/
+.claude/skills/tein-video-workflow
+vendor/

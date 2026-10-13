@@ -29,6 +29,8 @@ DEFAULTS = {
     "MW_MAX_PARALLEL": "3",
     "MW_PLANNER_MODEL": "claude-opus-5-5",
     "MW_PLANNER_MODEL_BUDGET": "claude-haiku-5-5",
+    "MW_REVIEWER_MODEL": "claude-opus-5-5",
+    "MW_REVIEWER_MODEL_BUDGET": "claude-haiku-5-5",
     "MEDIA_HOST": "tmpfiles",
     "MEDIA_HOST_FALLBACKS": "catbox",
     "ENHANCOR_BASE_URL": "https://apireq.enhancor.ai/api/seedance2.5/v1",

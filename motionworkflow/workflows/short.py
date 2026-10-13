@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 
-from .. import catalog, media, planner
+from .. import budget, catalog, media, planner, reviewer
 from ..jobs import Job
 from .common import first_input, first_of_kind, generate, line, parallel, total
 
@@ -29,6 +29,7 @@ def _settings(params: dict) -> dict:
         "voiceover": params.get("voiceover", True) not in (False, "false", "0", 0),
         "captions": params.get("captions", True) not in (False, "false", "0", 0),
         "review": params.get("review", True) not in (False, "false", "0", 0),
+        "score": params.get("review_cut", True) not in (False, "false", "0", 0),
         "tier": params.get("tier"),
     }
 
@@ -72,7 +73,18 @@ def estimate(params: dict, counts: dict) -> dict:
         items.append(line(f"Animate {n} shots (after storyboard approval)", models["video"], n * clip))
     if "tts" in models:
         items.append(line("Voiceover", models["tts"], n * catalog.estimate(models["tts"], {"text": "x" * CHARS_PER_SHOT})))
+    if s["score"] and reviewer.available() and models["image"]["provider"] != "mock":
+        items.append({"label": "Fresh-eyes review (Claude)", "model": "claude", "model_name": "Claude",
+                      "usd": reviewer.ESTIMATE_USD, "mock": False})
     return total(items)
+
+
+def motion_prompt(shot: dict) -> str:
+    """Image-to-video prompt shaped like Take One's real-shots.md: lock, change, bans."""
+    motion = shot["motion"].strip().rstrip(".")
+    return (f"Everyone and everything stays exactly as in the picture: same faces, same clothes, same place. "
+            f"{motion}, in real time, already in motion from the first frame. "
+            "No new objects, no text, no morphing, no flicker.")
 
 
 # -- stages ---------------------------------------------------------------
@@ -87,7 +99,8 @@ def _plan(job: Job) -> dict:
         job.status("Writing the script")
         plan, warning = planner.make_plan(
             idea=params.get("idea") or "", style=params.get("style") or "", shots=s["shots"],
-            tone=params.get("tone") or "funny", tier=s["tier"] or "budget", script=params.get("script") or "")
+            tone=params.get("tone") or "funny", tier=s["tier"] or "budget", script=params.get("script") or "",
+            seconds=s["seconds"])
         if warning:
             job.data["warning"] = warning
         path.write_text(json.dumps(plan, indent=2))
@@ -110,7 +123,7 @@ def _keyframes(job: Job, plan: dict, model: dict) -> list:
 
     def one(index):
         shot = plan["shots"][index]
-        prompt = f"{shot['visual']}. Style: {plan['style_bible']}"
+        prompt = f"{shot['visual']}. Style: {plan['style_bible']}. Clean, uncluttered lower third; no text or lettering."
         request = {"prompt": prompt, "aspect_ratio": s["aspect"], "num_images": 1}
         if character:
             request["prompt"] = f"Keep the character from the reference image identical. {prompt}"
@@ -152,7 +165,7 @@ def _clips(job: Job, plan: dict, keyframes: list, model: dict | None, targets: l
             return media.still_to_clip(keyframes[index], work / f"still-{index}.mp4", targets[index], size,
                                        MOTIONS[index % len(MOTIONS)])
         shot = plan["shots"][index]
-        request = {"prompt": f"{shot['motion']}. {shot['visual']}", "image": str(keyframes[index]),
+        request = {"prompt": motion_prompt(shot), "image": str(keyframes[index]),
                    **_clip_params(job.params, model)}
         files = generate(job, f"clip-{index}", model, request, label=f"Animate shot {index + 1}")
         return first_of_kind(files, "video")
@@ -166,7 +179,7 @@ def _assemble(job: Job, plan: dict, clips: list, voices: list, targets: list[flo
     work = job.path("assemble")
     work.mkdir(exist_ok=True)
     job.status("Editing: joining shots, voice, music and captions")
-    normalized, audio_parts, cues = [], [], []
+    normalized, audio_parts, cues, spoken_lines = [], [], [], []
     start = 0.0
     for i, clip in enumerate(clips):
         seconds = targets[i]
@@ -176,9 +189,13 @@ def _assemble(job: Job, plan: dict, clips: list, voices: list, targets: list[flo
         else:
             audio_parts.append(media.silence(work / f"voice-{i}.wav", seconds))
         narration = plan["shots"][i]["narration"]
+        spoken = media.probe(voices[i])["duration"] if voices[i] else seconds - 0.3
+        if narration:
+            spoken_lines.append((start + 0.1, start + min(seconds, spoken + 0.1), narration))
         if narration and s["captions"]:
-            spoken = media.probe(voices[i])["duration"] if voices[i] else seconds - 0.3
-            cues += media.caption_chunks(narration, start + 0.1, start + min(seconds, spoken + 0.1))
+                cues += media.caption_chunks(narration, start + 0.1, start + min(seconds, spoken + 0.1),
+                                         row_chars=16 if s["aspect"] in ("9:16", "3:4") else 26,
+                                         highlight="#FFFFFF" if job.params.get("caption_style") == "yellow" else "#FFE500")
         start += seconds
 
     silent = media.concat(normalized, work / "joined.mp4")
@@ -189,18 +206,55 @@ def _assemble(job: Job, plan: dict, clips: list, voices: list, targets: list[flo
     final = job.path("final.mp4")
     if cues:
         srt = media.write_srt(cues, work / "captions.srt")
-        media.burn_captions(mixed, srt, final, job.params.get("caption_style") or "bold")
+        media.burn_captions(mixed, srt, final, job.params.get("caption_style") or "bold", s["aspect"])
         shutil.copyfile(srt, job.path("captions.srt"))
         job.add_output(job.path("captions.srt"), "Captions (.srt)", "file")
     else:
         shutil.copyfile(mixed, final)
     media.thumbnail(final, job.path("thumbnail.jpg"), at=min(1.0, start / 2))
-    post = job.path("post.txt")
+    posts = plan.get("posts") or {}
     tags = " ".join("#" + t.replace(" ", "") for t in plan.get("hashtags", []))
-    post.write_text(f"{plan.get('title', '')}\n\n{plan.get('caption', '')}\n\n{tags}\n")
-    job.add_output(post, "Post caption + hashtags", "file")
+    lines = [f"# {plan.get('title', '')}", "", f"Takeaway: {plan.get('takeaway', '')}", "",
+             "## TikTok / Reels / Shorts", "", posts.get("tiktok") or f"{plan.get('caption', '')} {tags}", "",
+             "## X", "", posts.get("x") or plan.get("caption", ""), "",
+             "## LinkedIn", "", posts.get("linkedin") or plan.get("caption", ""), "",
+             "## Hashtags", "", tags, "",
+             "Label this as AI-generated where the platform asks."]
+    job.path("POSTS.md").write_text("\n".join(lines) + "\n")
+    job.add_output(job.path("POSTS.md"), "Posts (TikTok, X, LinkedIn)", "file")
     job.add_output(job.path("thumbnail.jpg"), "Thumbnail", "image")
     job.add_output(final, "Final video", "video", final=True)
+    job.data["shot_times"] = [round(sum(targets[:i]), 2) for i in range(len(targets))]
+    job.save()
+    _score(job, final, spoken_lines)
+
+
+def _score(job: Job, final, spoken_lines: list) -> None:
+    """Take One's fresh reviewer: a stranger's score from frames and timed words only."""
+    s = _settings(job.params)
+    folder = job.path("review")
+    if not s["score"]:
+        return
+    if job.data.get("used_mock"):
+        job.data["review"] = {"skipped": "Not scored: this cut used placeholder (mock) media."}
+        return
+    if not reviewer.available():
+        job.data["review"] = {"skipped": "Add ANTHROPIC_API_KEY to get a fresh-eyes score of every short."}
+        return
+    if (folder / "review.json").exists():
+        return
+    job.status("Reviewer: scoring the cut with fresh eyes")
+    budget.charge(job.id, "claude:review", reviewer.ESTIMATE_USD, note="review")
+    route = "still pictures with camera moves (slideshow)" if s["mode"] == "slideshow" else "AI-animated shots"
+    try:
+        result = reviewer.review(final, spoken_lines, folder, locked=f"the route: {route}; the narration voice",
+                                 tier=s["tier"] or "budget")
+    except reviewer.ReviewError as exc:
+        job.data["warning"] = f"Review skipped: {exc}"
+        return
+    job.data["review"] = result
+    job.add_output(folder / "REVIEW.md", f"Reviewer: {result['verdict']} (overall {result['scores'].get('overall', '?')}/10)", "file")
+    job.add_output(folder / "contact-sheet.jpg", "Contact sheet the reviewer saw", "image")
 
 
 def run(job: Job) -> None:

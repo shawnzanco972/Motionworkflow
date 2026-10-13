@@ -14,7 +14,12 @@ from . import budget, catalog, config, jobs, media, workflows
 from .jobs import DONE, ERROR, WAITING
 
 
+JSON_OUTPUT = False
+
+
 def _print_quote(quote: dict) -> None:
+    if JSON_OUTPUT:
+        return
     for item in quote["items"]:
         mock = "  [mock: no key]" if item.get("mock") else ""
         print(f"  {item['label']:<44} {item['model_name']:<42} ~${item['usd']:.3f}{mock}")
@@ -45,6 +50,21 @@ def _files(**fields) -> dict:
 
 def _report(job: jobs.Job) -> int:
     state = job.data["state"]
+    if JSON_OUTPUT:
+        out = {
+            "job": job.id,
+            "state": state,
+            "status": job.data["status"],
+            "error": job.data.get("error"),
+            "awaiting": job.data.get("awaiting"),
+            "outputs": [{"label": o["label"], "kind": o["kind"], "final": o.get("final", False),
+                         "path": str(job.folder / o["path"])} for o in job.data.get("outputs", [])],
+            "spent_usd": round(budget.spent_on_job(job.id), 4),
+            "used_mock": bool(job.data.get("used_mock")),
+            "review": job.data.get("review"),
+        }
+        print(json.dumps(out, indent=2))
+        return 1 if state == ERROR else 0
     print(f"\nJob {job.id}: {state} - {job.data['status']}")
     if job.data.get("warning"):
         print("Note:", job.data["warning"])
@@ -70,9 +90,13 @@ def _launch(workflow: str, params: dict, files: dict, args) -> int:
     except (ValueError, config.MissingKey) as exc:
         print("Error:", exc)
         return 2
-    print(f"{workflow} estimate:")
+    if JSON_OUTPUT and args.estimate:
+        print(json.dumps({"estimate": quote["total"], "items": quote["items"], "mock": quote["mock"]}, indent=2))
+        return 0
+    if not JSON_OUTPUT:
+        print(f"{workflow} estimate:")
     _print_quote(quote)
-    if quote["mock"]:
+    if quote["mock"] and not JSON_OUTPUT:
         print("  Some steps use offline mock output because no API key is set for them.")
     if args.estimate:
         return 0
@@ -87,13 +111,14 @@ def _launch(workflow: str, params: dict, files: dict, args) -> int:
     job = jobs.create(workflow, params, files)
     job.data["estimate"] = quote
     job.save()
-    print(f"Job {job.id} started. Files: {job.folder}")
+    if not JSON_OUTPUT:
+        print(f"Job {job.id} started. Files: {job.folder}")
     workflows.run(job)
     return _report(job)
 
 
 def _progress(job, message):
-    print(f"  [{job.id}] {message}", flush=True)
+    print(f"  [{job.id}] {message}", file=sys.stderr if JSON_OUTPUT else sys.stdout, flush=True)
 
 
 # -- commands -------------------------------------------------------------------
@@ -180,8 +205,40 @@ def cmd_short(args):
 
 def cmd_swap(args):
     params = {"prompt": args.prompt, "tier": args.tier, "model": args.model, "prepared": args.prepared,
-              "draft_resolution": args.draft_resolution, "final_resolution": args.final_resolution}
+              "draft_resolution": args.draft_resolution, "final_resolution": args.final_resolution,
+              "prep": args.prep, "subject": args.subject, "direct": args.direct}
     return _launch("swap", params, _files(video=args.video, refs=args.ref, original=args.original), args)
+
+
+def cmd_voice(args):
+    text = Path(args.text_file).read_text() if args.text_file else (args.text or "")
+    params = {"text": text, "voice": args.voice, "tier": args.tier, "model": args.model}
+    return _launch("voice", params, {}, args)
+
+
+def cmd_review(args):
+    from . import reviewer
+
+    job = _load(args.job)
+    final = next((job.folder / o["path"] for o in job.data.get("outputs", []) if o.get("final") and o["kind"] == "video"), None)
+    if not final:
+        print("This job has no finished video to review.")
+        return 1
+    if not reviewer.available():
+        print("The reviewer needs ANTHROPIC_API_KEY.")
+        return 2
+    plan = job.data.get("plan") or {}
+    times = job.data.get("shot_times") or []
+    words = [(times[i] if i < len(times) else 0.0, (times[i + 1] if i + 1 < len(times) else times[i] + 4) if times else 4.0,
+              shot["narration"]) for i, shot in enumerate(plan.get("shots", [])) if shot.get("narration")]
+    if not args.yes and not _confirm({"needs_confirmation": True, "total": reviewer.ESTIMATE_USD}, False):
+        return 1
+    budget.charge(job.id, "claude:review", reviewer.ESTIMATE_USD, note="review")
+    result = reviewer.review(final, words, job.path("review"), tier=job.params.get("tier") or "budget")
+    job.data["review"] = result
+    job.add_output(job.path("review/REVIEW.md"), f"Reviewer: {result['verdict']}", "file")
+    print(json.dumps(result, indent=2) if JSON_OUTPUT else reviewer.as_markdown(result))
+    return 0
 
 
 def _load(job_id):
@@ -257,6 +314,8 @@ def cmd_spend(args):
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mw", description="MotionWorkflow: cheap AI images, videos and shorts.")
+    p.add_argument("--json", action="store_true", dest="as_json",
+                   help="machine-readable result (for agents such as the Take One skill); progress goes to stderr")
     sub = p.add_subparsers(dest="command", required=True)
 
     def paid(cmd):
@@ -329,10 +388,26 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--prompt", default="")
     s.add_argument("--original", help="untouched original whose audio goes on the final")
     s.add_argument("--prepared", action="store_true", help="video is a Genjutsu seedance-input.mp4")
+    s.add_argument("--prep", default="none", choices=["none", "genjutsu-depth", "genjutsu-face-mesh", "genjutsu-depth-mesh"],
+                   help="run Genjutsu's preparation first (Seedance engine; pauses for the full-clip review)")
+    s.add_argument("--subject", default="person", help="what SAM 3 should segment for Genjutsu depth prep")
+    s.add_argument("--direct", action="store_true", help="skip the draft: one render at final quality")
     s.add_argument("--model")
     s.add_argument("--draft-resolution")
     s.add_argument("--final-resolution")
     s.set_defaults(fn=cmd_swap)
+
+    s = paid(sub.add_parser("voice", help="text-to-speech voiceover"))
+    s.add_argument("text", nargs="?")
+    s.add_argument("--text-file")
+    s.add_argument("--voice")
+    s.add_argument("--model")
+    s.set_defaults(fn=cmd_voice)
+
+    s = sub.add_parser("review", help="fresh-eyes score of a finished video (Claude, ~$0.03)")
+    s.add_argument("job")
+    s.add_argument("--yes", action="store_true")
+    s.set_defaults(fn=cmd_review)
 
     s = sub.add_parser("jobs", help="list recent jobs")
     s.add_argument("--limit", type=int, default=20)
@@ -373,8 +448,10 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global JSON_OUTPUT
     args = parser().parse_args(argv)
-    if args.command not in ("serve",):
+    JSON_OUTPUT = args.as_json
+    if args.command not in ("serve",) and _progress not in jobs.listeners:
         jobs.listeners.append(_progress)
     try:
         return args.fn(args) or 0

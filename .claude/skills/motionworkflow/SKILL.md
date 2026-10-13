@@ -1,6 +1,6 @@
 ---
 name: motionworkflow
-description: Make AI images, videos, narrated short-form videos (TikTok/Reels/Shorts) and Genjutsu-style character swaps with this repo's `mw` CLI, on cheap models with cost estimates, budget caps and approval gates. Use when the user asks to generate, animate, script, caption or swap characters in media, or asks what it would cost.
+description: Make AI images, videos, voiceovers, narrated short-form videos (TikTok/Reels/Shorts) and Genjutsu character swaps with this repo's `mw` CLI, on cheap models with cost estimates, budget caps, approval gates and a fresh-eyes reviewer score. Also the cheap asset engine (pictures, moving shots, voice) for the Take One film skill. Use when the user asks to generate, animate, script, caption, voice or swap characters in media, or asks what it would cost.
 ---
 
 # MotionWorkflow
@@ -30,6 +30,12 @@ Every generation command takes `--estimate` (prints the quote, spends nothing). 
 | Video from text / still | `mw video "PROMPT"` / `mw video "MOTION" --image still.png` |
 | Cheap draft then premium | `mw video "PROMPT" --final-tier premium` → pauses after draft |
 | Character swap | `mw swap clip.mp4 --ref character.png [--prompt ...]` → pauses after draft |
+| Genjutsu swap (depth + SAM 3) | `mw swap clip.mp4 --ref c.png --model enhancor:seedance-edit --prep genjutsu-depth` → pauses for full-clip mask review |
+| One render, no draft | add `--direct` to `mw swap` (a Seedance draft costs extra overall) |
+| Voiceover | `mw voice "LINE" [--voice af_heart]` or `--text-file lines.txt` |
+| Score a finished video | `mw review JOB` (Claude sees only frames + timed words; PASS needs 8+ on every axis) |
+
+Put `--json` before the command (`mw --json image ...`) for machine-readable results with absolute output paths.
 
 Tiers: `--tier free|budget|standard|premium` (default from `MW_DEFAULT_TIER`). Pick an exact model with `--model ID` (see `mw models`).
 
@@ -43,7 +49,7 @@ When a job prints `awaiting_approval`:
 
 ## 4. Deliver
 
-Final files live in `runs/JOB/`: `final.mp4`, `thumbnail.jpg`, `captions.srt`, `post.txt` (title, caption, hashtags), `plan.json`. Report the paths, the logged spend (`mw spend`), and anything that used mock output.
+Final files live in `runs/JOB/`: `final.mp4`, `thumbnail.jpg`, `captions.srt`, `POSTS.md` (TikTok, X and LinkedIn posts, hashtags), `plan.json`. Report the paths, the logged spend (`mw spend`), and anything that used mock output.
 
 ## Failures
 
@@ -52,10 +58,20 @@ Final files live in `runs/JOB/`: `final.mp4`, `thumbnail.jpg`, `captions.srt`, `
 - "unclear whether the provider accepted": ask the user to check the provider dashboard before `mw retry JOB --force`.
 - Budget errors: report them; don't raise caps without the user's say-so.
 
+## Fresh-eyes score (from the Take One skill)
+
+With `ANTHROPIC_API_KEY`, every finished short gets a reviewer report (`runs/JOB/review/REVIEW.md`): retell, seven axes, the three worst problems with times (mapped to shot numbers in the app). Report it as it is. A RETURN means fix the named shots (`mw redo`) and re-score (`mw review JOB`), at most three rounds; never call a RETURN a pass.
+
+## Take One films
+
+For a directed, studio-grade film use the Take One skill (`/take-one ...`). When it needs real-looking pictures, moving shots or a voice and the person has keys here, follow `TAKE-ONE.md` in this folder.
+
 ## Character swap specifics (Genjutsu)
 
 - Enhancor Seedance needs `ENHANCOR_API_KEY` and a webhook: `./start.sh` auto-starts a callback-only cloudflared tunnel, or set `ENHANCOR_WEBHOOK_URL`. CLI-only runs need the app (or tunnel) running.
 - Image reference → Seedance Edit; video identity reference → multi_reference (Omni). Draft first; the approved final completes the draft at 1080p via `draft_id`.
 - The output always carries the source clip's untouched original audio. Clips over 30 s are trimmed.
-- For the full Genjutsu depth + SAM 3 mask prep, prepare with the upstream repo and pass its `seedance-input.mp4` with `--prepared --original untouched.mp4`.
+- Genjutsu prep (`--prep genjutsu-depth|genjutsu-face-mesh|genjutsu-depth-mesh`, `--subject person`) runs the upstream Genjutsu preparation in `vendor/genjutsu` (install: `bash scripts/install-skills.sh --with-genjutsu-env`; needs `REPLICATE_API_TOKEN` and rubberband). Its rule is mandatory: watch the WHOLE prepared clip (`runs/JOB/genjutsu/`: mask, composite, prepared input), check hair, hands, clothing, edges, background spill and flicker (face tracking and pitched vocals for face mesh), and only then `mw approve JOB` (stage `mask`). If you cannot inspect video, ask the user to review it. A bad mask: `mw redo JOB prep` (withdraws all approvals).
+- Already prepared elsewhere: pass Genjutsu's `seedance-input.mp4` with `--prepared --original untouched.mp4`.
+- The upstream Genjutsu skill is also installed as `tein-video-workflow` for running Genjutsu on its own.
 - Only swap people the user has the right to depict.

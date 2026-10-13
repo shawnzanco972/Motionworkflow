@@ -23,6 +23,11 @@ if [ ! -f .env ]; then
   echo "Created .env - add your API keys there (or in the app's Settings tab)."
 fi
 
+# The Take One and Genjutsu skills (fetched from upstream; see scripts/install-skills.sh).
+if command -v git >/dev/null 2>&1; then
+  bash scripts/install-skills.sh || echo "Skill download failed (offline?). Re-run: bash scripts/install-skills.sh"
+fi
+
 if ! command -v ffmpeg >/dev/null 2>&1; then
   echo
   echo "ffmpeg is missing. Install it:  macOS: brew install ffmpeg   Ubuntu/WSL: sudo apt install ffmpeg"

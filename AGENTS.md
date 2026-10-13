@@ -24,13 +24,21 @@ Rules for any coding agent (Claude Code, Codex, …) operating MotionWorkflow fo
 - For Character Swap, use only people the user has the right to depict; image references use Seedance Edit, a video identity reference uses Seedance multi_reference (Omni). The final always carries the source's original audio.
 - Look at outputs before calling them done. If a frame is wrong, `mw redo <job> key-N` (with `--shot N --visual ...` to change the prompt) instead of regenerating the whole job.
 
+## Skills this project builds on
+
+- **Take One** (`.claude/skills/take-one`): studio-style films rendered from code. Use it for directed films; it uses `mw` for paid pictures, moving shots and voice (see `.claude/skills/motionworkflow/TAKE-ONE.md`). Its craft rules are built into Short Maker (whole-line captions for muted viewers, about two words a second, one takeaway, no still held past ~4 s, image-to-video prompts that lock, move and ban, posts per platform, the fresh-eyes reviewer).
+- **Genjutsu** (`vendor/genjutsu`, skill `tein-video-workflow`): depth + SAM 3 / face-mesh preparation for Seedance character swaps, with mandatory full-clip review. Character Swap runs it with `--prep`.
+- Both are fetched by `scripts/install-skills.sh` at pinned commits (their names, logos and media are not ours to redistribute). Never copy their files into this repo.
+
 ## Code map
 
 - `motionworkflow/models.json` — model catalog, tier defaults, price estimates. `models.local.json` overrides it.
 - `motionworkflow/catalog.py` — tier resolution, param mapping, cost estimates.
 - `motionworkflow/providers/` — fal, Replicate, Enhancor, Pollinations, Mock.
 - `motionworkflow/workflows/common.py` — `generate()`: the only code path that spends money; idempotent per step.
-- `motionworkflow/workflows/{image,video,short,swap}.py` — the four workflows.
+- `motionworkflow/workflows/{image,video,short,swap,voice}.py` — the workflows.
+- `motionworkflow/genjutsu.py` — runs Genjutsu's `workflow.py prepare` from `vendor/genjutsu`.
+- `motionworkflow/reviewer.py` — Take One-style fresh-eyes review (frames + timed words only; PASS computed from the bar).
 - `motionworkflow/media.py` — ffmpeg editing (Ken Burns, concat, mix/ducking, captions, audio restore).
 - `motionworkflow/server.py` + `static/index.html` — local web app. `cli.py` — `mw` command.
 - Tests in `tests/` run offline with the mock provider.

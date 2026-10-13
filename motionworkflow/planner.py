@@ -15,6 +15,7 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
+        "takeaway": {"type": "string"},
         "style_bible": {"type": "string"},
         "shots": {
             "type": "array",
@@ -31,22 +32,46 @@ SCHEMA = {
         },
         "caption": {"type": "string"},
         "hashtags": {"type": "array", "items": {"type": "string"}},
+        "posts": {
+            "type": "object",
+            "properties": {"tiktok": {"type": "string"}, "x": {"type": "string"}, "linkedin": {"type": "string"}},
+            "required": ["tiktok", "x", "linkedin"],
+            "additionalProperties": False,
+        },
     },
-    "required": ["title", "style_bible", "shots", "caption", "hashtags"],
+    "required": ["title", "takeaway", "style_bible", "shots", "caption", "hashtags", "posts"],
     "additionalProperties": False,
 }
 
-SYSTEM = """You write scripts for short vertical videos (TikTok, Reels, Shorts) that get watched to the end.
+# Craft rules adapted from the Take One skill (talsiach/take-one, MIT): words.md,
+# captions.md, real-shots.md, concept-check.md. The viewer sees it once, on a
+# phone, often muted.
+SYSTEM = """You write scripts for short vertical videos (TikTok, Reels, Shorts) that people watch to the end. The viewer sees it once, at full speed, on a phone, often muted.
 
-Rules:
-- Shot 1 is the hook: a surprising image and a first line that makes people stay.
-- Each later shot escalates; the last shot pays off with a twist or punchline.
-- `visual` is a complete, self-contained image-generation prompt: subject, action, setting, lighting, camera framing. Never refer to other shots ("same as before").
-- Put the recurring look in `style_bible`: art style plus a precise description of any recurring character (age, build, hair, clothing, colors). It is appended to every visual prompt, so do not repeat it inside `visual`.
-- `motion` describes movement for an image-to-video model: one clear action plus a camera move, under 25 words.
-- `narration` is the voiceover for that shot: conversational, at most 22 words, no stage directions or emoji.
-- `caption` is the post description (1-2 lines); `hashtags` are 3-6 relevant tags without '#'.
-- Keep it original: no real celebrities, brands, or copyrighted characters."""
+The idea
+- One idea and one takeaway: the single sentence a viewer should remember. Every shot sets it up or pays it off.
+- Shot 1 is the hook: a striking picture and a first line that make people stay. The last shot is the payoff (a twist or punchline) worth rewatching.
+- Comedy: a line is funny when it contradicts what is on screen, not when it is a familiar phrase.
+- Use only what the person gave you. No real people, celebrities, brands, logos or copyrighted characters; no claims, numbers, prices or links they did not give.
+
+The words (narration)
+- Written to be understood on one hearing with no context: conversational, short sentences, one idea each, no trade words.
+- Budget about two words per second of the shot (the per-shot word budget is given). Cut lines, not pace.
+- After an aside, name the subject again instead of "it/this/that".
+- No stage directions, emoji or hashtags in narration.
+
+The pictures (visual)
+- Each `visual` is a complete, self-contained image prompt: subject, action, setting, light, camera framing. Never refer to other shots.
+- Caught, not posed: people and creatures mid-action, not smiling at the lens.
+- Leave clean space in the lower third for captions; nothing important there. Never ask for text, signs, logos or lettering in the picture.
+- Put the recurring look in `style_bible`: the art style plus a precise plain description of any recurring character (species/age, build, hair or fur, clothes, colours), worded the same way every time. It is appended to every visual prompt, so do not repeat it in `visual`.
+
+The motion
+- `motion` is for an image-to-video model: one small action per character or object, plus one small, slow camera move. Under 25 words. Describe the change, not the scene.
+
+The posts
+- `caption`: the post description, 1-2 lines. `hashtags`: 3-6 relevant tags without '#', no hashtag walls.
+- `posts.tiktok`: a hook under 15 words plus at most one line. `posts.x`: short, hook first. `posts.linkedin`: a fuller first-person sentence or two, no hashtags. Say it is AI-made where natural; no hype words like "insane"."""
 
 BEATS = [
     ("hook", "a surprising opening moment"),
@@ -69,6 +94,8 @@ def _clean(plan: dict, shots: int) -> dict:
     if not plan["shots"]:
         raise PlannerError("The plan has no shots.")
     plan["hashtags"] = [re.sub(r"^#", "", h).strip() for h in plan.get("hashtags", []) if h.strip()]
+    plan.setdefault("takeaway", plan.get("caption", ""))
+    plan.setdefault("posts", _default_posts(plan.get("title", ""), plan.get("caption", ""), plan["hashtags"]))
     return plan
 
 
@@ -85,8 +112,14 @@ def from_script(script: str, style: str, title: str = "") -> dict:
         shots.append({"visual": visual, "motion": motion, "narration": narration})
     if not shots:
         raise PlannerError("The script is empty.")
-    return {"title": title or shots[0]["narration"][:60], "style_bible": style, "shots": shots,
-            "caption": title or shots[0]["narration"], "hashtags": [], "planner": "script"}
+    caption = title or shots[0]["narration"]
+    return {"title": title or shots[0]["narration"][:60], "takeaway": caption, "style_bible": style, "shots": shots,
+            "caption": caption, "hashtags": [], "posts": _default_posts(caption, caption, []), "planner": "script"}
+
+
+def _default_posts(title: str, caption: str, hashtags: list[str]) -> dict:
+    tags = " ".join("#" + h for h in hashtags[:5])
+    return {"tiktok": f"{caption} {tags}".strip(), "x": caption, "linkedin": f"{caption} Made with AI."}
 
 
 def template(idea: str, style: str, shots: int) -> dict:
@@ -103,17 +136,20 @@ def template(idea: str, style: str, shots: int) -> dict:
             "motion": "natural character movement, slow camera push-in",
             "narration": f"{name.capitalize()}: {idea}." if name != "hook" else f"Wait for it... {idea}.",
         })
-    return {"title": idea[:80], "style_bible": style, "shots": plan_shots, "caption": idea,
-            "hashtags": ["funny", "aivideo", "shorts"], "planner": "template"}
+    tags = ["funny", "aivideo", "shorts"]
+    return {"title": idea[:80], "takeaway": idea, "style_bible": style, "shots": plan_shots, "caption": idea,
+            "hashtags": tags, "posts": _default_posts(idea, idea, tags), "planner": "template"}
 
 
-def claude_plan(idea: str, style: str, shots: int, tone: str, tier: str) -> dict:
+def claude_plan(idea: str, style: str, shots: int, tone: str, tier: str, seconds: float = 5) -> dict:
     import anthropic
 
     model = config.setting("MW_PLANNER_MODEL_BUDGET" if tier in ("free", "budget") else "MW_PLANNER_MODEL")
     client = anthropic.Anthropic(api_key=config.credential("ANTHROPIC_API_KEY"))
+    words = max(4, int(seconds * 2))
     prompt = (f"Video idea: {idea}\nVisual style: {style}\nTone: {tone}\nNumber of shots: exactly {shots}\n"
-              "Write the plan.")
+              f"Each shot lasts about {seconds:g} s, so narration budget is about {words} words per shot "
+              f"(total film about {shots * seconds:g} s).\nWrite the plan.")
     kwargs = dict(
         model=model,
         max_tokens=16000,
@@ -150,7 +186,7 @@ def claude_plan(idea: str, style: str, shots: int, tone: str, tier: str) -> dict
 
 
 def make_plan(idea: str, style: str = "", shots: int = 5, tone: str = "funny", tier: str = "budget",
-              script: str = "") -> tuple[dict, str | None]:
+              script: str = "", seconds: float = 5) -> tuple[dict, str | None]:
     """Return (plan, warning). Never spends money on media."""
     style = style or "vibrant 3D animated film style, soft lighting"
     if script.strip():
@@ -159,7 +195,7 @@ def make_plan(idea: str, style: str = "", shots: int = 5, tone: str = "funny", t
         raise PlannerError("Describe the video idea or paste a script.")
     if config.has_key("ANTHROPIC_API_KEY"):
         try:
-            return _clean(claude_plan(idea, style, shots, tone, tier), shots), None
+            return _clean(claude_plan(idea, style, shots, tone, tier, seconds), shots), None
         except PlannerError as exc:
             return _clean(template(idea, style, shots), shots), f"Claude planning failed ({exc}); used the built-in template."
     return _clean(template(idea, style, shots), shots), (

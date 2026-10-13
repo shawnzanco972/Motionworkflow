@@ -1,15 +1,16 @@
 """Workflow registry and job runner (used by both the web app and the CLI)."""
 from __future__ import annotations
 
+import shutil
 import threading
 import traceback
 
 from .. import budget, jobs
 from ..jobs import DONE, ERROR, RUNNING, WAITING, Job
-from . import image, short, swap, video
+from . import image, short, swap, video, voice
 from .common import StepFailed
 
-WORKFLOWS = {"image": image, "video": video, "short": short, "swap": swap}
+WORKFLOWS = {"image": image, "video": video, "short": short, "swap": swap, "voice": voice}
 
 _active: set[str] = set()
 _active_lock = threading.Lock()
@@ -117,11 +118,20 @@ def redo(job: Job, step_keys: list[str], overrides: dict | None = None) -> None:
             merged.setdefault(index, {}).update({k: v for k, v in edits.items() if v})
     if "plan" in keys:
         job.path("plan.json").unlink(missing_ok=True)
+    if "prep" in keys:  # new Genjutsu prep: everything generated from the old one goes
+        keys.update({"draft", "final"})
+        steps.pop("draft", None)
+        shutil.rmtree(job.path("genjutsu"), ignore_errors=True)
+        job.data["outputs"] = [o for o in job.data.get("outputs", []) if not o["path"].startswith("genjutsu/")]
     if "draft" in keys:
         job.path("draft-preview.mp4").unlink(missing_ok=True)
+        job.data["outputs"] = [o for o in job.data.get("outputs", []) if o["path"] != "draft-preview.mp4"]
         steps.pop("final", None)
     job.path("final.mp4").unlink(missing_ok=True)
-    job.data["outputs"] = [o for o in job.data.get("outputs", []) if not o.get("final")]
+    shutil.rmtree(job.path("review"), ignore_errors=True)  # a new cut needs a new reviewer
+    job.data.pop("review", None)
+    job.data["outputs"] = [o for o in job.data.get("outputs", [])
+                           if not o.get("final") and not o["path"].startswith("review/")]
     job.clear_approvals()
     job.save()
 

@@ -4,7 +4,12 @@ A local studio for making AI **images, videos, narrated short-form videos, and c
 
 It's plug-and-play: it runs end-to-end **today with no API keys** (free images + offline placeholder media), and every real model switches on the moment you paste a key into Settings or `.env`.
 
-Inspired by and partly adapted from the [Genjutsu Open Source Workflow](https://github.com/sirioberati/Genjustsu-Open-Source-Workflow) (MIT): its Seedance character swap, draft → approve → 1080p flow, no-duplicate-billing recovery, and original-audio restoration are built in. See [THIRD-PARTY.md](THIRD-PARTY.md).
+## Built on two skills
+
+- **[Genjutsu](https://github.com/sirioberati/Genjustsu-Open-Source-Workflow)** — "your scene, new characters". Character Swap runs Genjutsu's own preparation (Demucs vocals pitched +3, colored depth, SAM 3 masks, or a face mesh), stops for its mandatory full-clip review, then sends the prepared clip to Seedance (draft → approved 1080p) and puts the complete original audio back on the result.
+- **[Take One](https://github.com/talsiach/take-one)** — "a whole creative studio in one skill" for Claude Code. Use `/take-one` for directed, studio-grade films; it can use this app for cheap pictures, moving shots and voice ([how](.claude/skills/motionworkflow/TAKE-ONE.md)). Its craft is built into Short Maker: one takeaway, words written for one hearing at ~2 words/s, whole-line captions with the key word lit (muted viewers), no still held past ~4 s, image-to-video prompts that lock / move / ban, posts per platform, and a **fresh-eyes reviewer** that scores every finished short from frames alone (PASS only at 8+ on every axis).
+
+`./setup.sh` fetches both at pinned commits into `.claude/skills/take-one` and `vendor/genjutsu` (`bash scripts/install-skills.sh` to refresh; add `--with-genjutsu-env` to build Genjutsu's own environment, which needs Python 3.12+ and `rubberband`). They're fetched rather than copied because their names, logos and media aren't covered by their licences. See [THIRD-PARTY.md](THIRD-PARTY.md).
 
 ## What you can make
 
@@ -13,7 +18,8 @@ Inspired by and partly adapted from the [Genjutsu Open Source Workflow](https://
 | **Short Maker** · `mw short` | Idea → script → keyframes → voiceover → captions → finished 9:16 MP4 + post caption/hashtags | **~$0.03** for 6 narrated slideshow shots · **~$0.15–1.50** animated |
 | **Image** · `mw image` | Text-to-image, batches, reference-image edits / consistent characters | **~$0.003** per image |
 | **Video** · `mw video` | Text-to-video or animate a still; optional cheap draft → approved premium final | **~$0.02–0.25** per clip |
-| **Character Swap** · `mw swap` | Replace the person in a clip with your character, keep the original audio (Genjutsu-style) | **~$0.20–0.50** draft for 5 s |
+| **Character Swap** · `mw swap` | Replace the person in a clip with your character, keep the original audio; optional Genjutsu depth/SAM 3 or face-mesh prep | **~$0.20–0.50** draft for 5 s (+~$0.30 Genjutsu prep) |
+| **Voice** · `mw voice` | Voiceover from text (Kokoro, ElevenLabs) | **~$0.002** per line |
 
 Costs are estimates from [`motionworkflow/models.json`](motionworkflow/models.json); providers change prices often, so check their pages (see [docs/PROVIDERS.md](docs/PROVIDERS.md)).
 
@@ -74,6 +80,10 @@ mw image "same dog, now in space" --ref dog.png
 mw video "raccoon DJ, neon rooftop" --final-tier premium              # cheap draft, then approve
 mw video "slow push-in, wind in hair" --image portrait.png
 mw swap clip.mp4 --ref character.png                                  # draft, then: mw approve <job>
+mw swap clip.mp4 --ref c.png --model enhancor:seedance-edit --prep genjutsu-depth   # Genjutsu prep + mask review
+mw voice "Nobody suspects the pigeon." --voice af_heart
+mw review <job>                                                       # fresh-eyes score (Claude)
+mw --json image "..."                                                 # machine-readable, for agents / Take One
 mw models --kind video        mw jobs        mw status <job>        mw spend
 ```
 
@@ -87,7 +97,7 @@ This repo ships a skill at [`.claude/skills/motionworkflow/SKILL.md`](.claude/sk
 
 ## Where things go
 
-Each job is a folder in `runs/<job-id>/` with `job.json`, inputs, every model output, and the final files (`final.mp4`, `captions.srt`, `post.txt`, `thumbnail.jpg`, `plan.json`). `runs/ledger.jsonl` is the spend log. Both are git-ignored.
+Each job is a folder in `runs/<job-id>/` with `job.json`, inputs, every model output, and the final files (`final.mp4`, `captions.srt`, `POSTS.md`, `thumbnail.jpg`, `plan.json`). `runs/ledger.jsonl` is the spend log. Both are git-ignored.
 
 ## Tests
 

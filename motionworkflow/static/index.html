@@ -107,6 +107,7 @@ dialog::backdrop{background:#0009}
   <button data-tab="image">🖼️ Image</button>
   <button data-tab="video">🎞️ Video</button>
   <button data-tab="swap">🎭 Character Swap</button>
+  <button data-tab="voice">🎙️ Voice</button>
   <button data-tab="library">📚 Library</button>
   <button data-tab="settings">⚙️ Settings</button>
 </nav>
@@ -142,6 +143,7 @@ dialog::backdrop{background:#0009}
       <div><label class="check"><input type="checkbox" name="voiceover" checked> Voiceover</label></div>
       <div><label class="check"><input type="checkbox" name="captions" checked> Captions</label></div>
       <div><label class="check"><input type="checkbox" name="review" checked> Storyboard review</label></div>
+      <div><label class="check"><input type="checkbox" name="review_cut" checked> Fresh-eyes score</label></div>
     </div>
     <div class="row">
       <div><label>Voice</label><select name="voice" id="voiceSelect"></select></div>
@@ -163,7 +165,12 @@ dialog::backdrop{background:#0009}
     <div class="seg tier"></div>
     <div class="estimate"></div>
     <button class="btn" type="submit" style="margin-top:14px;width:100%">Create short</button>
-    <p class="hint">You get: final MP4 with voice + captions, keyframes, script, caption &amp; hashtags for posting, thumbnail.</p>
+    <p class="hint">You get: final MP4 with voice + captions, keyframes, script, posts for TikTok / X / LinkedIn, thumbnail, and (with a Claude key) a fresh reviewer's score.</p>
+    <div class="estimate" style="margin-top:18px">
+      <h3>Want a studio-grade film instead?</h3>
+      <p class="hint" style="margin:0">The <b>Take One</b> skill directs a full film in Claude Code (pitch, storyboard, code-rendered frames, music, sound, reviewer loop). It takes an hour or two of Claude usage and can use this app for cheap pictures, moving shots and voice. In Claude Code, type:</p>
+      <p style="margin:8px 0 0"><code>/take-one a 30 second film about …</code></p>
+    </div>
   </div>
 </form>
 </section>
@@ -237,8 +244,14 @@ dialog::backdrop{background:#0009}
       <div><label>Draft resolution</label><select name="draft_resolution"><option value="">Model default</option><option>480p</option><option>580p</option><option>720p</option></select></div>
       <div><label>Final resolution</label><select name="final_resolution"><option value="">Model best</option><option>720p</option><option>580p</option><option>480p</option></select></div>
     </div>
-    <details><summary>Genjutsu advanced input</summary>
-      <label class="check"><input type="checkbox" name="prepared"> The source is a prepared Genjutsu <code>seedance-input.mp4</code></label>
+    <label class="check"><input type="checkbox" name="direct"> Skip the draft (one render at final quality: cheaper overall, no preview first)</label>
+    <details><summary>Genjutsu prep (depth + SAM 3 masks / face mesh)</summary>
+      <p class="hint">Runs the Genjutsu workflow's preparation first (needs <code>bash scripts/install-skills.sh --with-genjutsu-env</code> and a Replicate token), then stops so you can review the whole prepared clip before anything is generated. Seedance engine only.</p>
+      <div class="row">
+        <div><label>Prep</label><select name="prep"><option value="none">None</option><option value="genjutsu-depth">Depth + SAM 3 mask</option><option value="genjutsu-face-mesh">Fast · face mesh</option><option value="genjutsu-depth-mesh">Depth + face mesh</option></select></div>
+        <div><label>Subject to mask</label><input type="text" name="subject" value="person"></div>
+      </div>
+      <label class="check"><input type="checkbox" name="prepared"> The source is already a prepared Genjutsu <code>seedance-input.mp4</code></label>
       <label>Untouched original clip (its audio goes on the final)</label><input type="file" name="original" accept="video/*,audio/*">
     </details>
   </div>
@@ -247,6 +260,26 @@ dialog::backdrop{background:#0009}
     <div class="estimate"></div>
     <button class="btn" type="submit" style="margin-top:14px;width:100%">Create draft</button>
     <p class="hint">Only swap people you have the right to use, and label AI edits when you post them.</p>
+  </div>
+</form>
+</section>
+
+<!-- VOICE -->
+<section class="tab" id="tab-voice">
+<form data-workflow="voice" class="grid2">
+  <div>
+    <label>Words to speak</label>
+    <textarea name="text" placeholder="Nobody suspects the pigeon in the tiny suit."></textarea>
+    <div class="row">
+      <div><label>Voice</label><select name="voice" id="voiceSelect2"></select></div>
+      <div><label>Model</label><select name="model" data-kinds="tts"></select></div>
+    </div>
+    <p class="hint">Write for one hearing: short sentences, about two words a second.</p>
+  </div>
+  <div>
+    <label>Quality / price tier</label><div class="seg tier"></div>
+    <div class="estimate"></div>
+    <button class="btn" type="submit" style="margin-top:14px;width:100%">Make voice</button>
   </div>
 </form>
 </section>
@@ -348,7 +381,9 @@ function fillModelSelects() {
   });
   const tts = MODELS.filter(m => m.kind === "tts" && m.voices);
   const voices = [...new Set(tts.flatMap(m => m.voices))];
-  $("#voiceSelect").innerHTML = `<option value="">Model default</option>` + voices.map(v => `<option>${v}</option>`).join("");
+  const voiceOptions = `<option value="">Model default</option>` + voices.map(v => `<option>${v}</option>`).join("");
+  $("#voiceSelect").innerHTML = voiceOptions;
+  $("#voiceSelect2").innerHTML = voiceOptions;
 }
 
 function setupForms() {
@@ -462,7 +497,7 @@ function renderDetail(job) {
   const title = job.params.idea || job.params.prompt || job.workflow;
   const outs = [...(job.outputs || [])].sort((a, b) => (b.final ? 1 : 0) - (a.final ? 1 : 0));
   const poster = (outs.find(o => o.path === "thumbnail.jpg") || {}).url;
-  const media = o => o.kind === "video" ? `<video src="${o.url}" controls playsinline preload="metadata" ${poster && o.final ? `poster="${poster}"` : ""}></video>` : o.kind === "image" ? `<img src="${o.url}" loading="lazy" alt="">` : "";
+  const media = o => o.kind === "video" ? `<video src="${o.url}" controls playsinline preload="metadata" ${poster && o.final ? `poster="${poster}"` : ""}></video>` : o.kind === "image" ? `<img src="${o.url}" loading="lazy" alt="">` : o.kind === "audio" ? `<audio src="${o.url}" controls style="width:100%"></audio>` : "";
   const est = job.estimate ? money(job.estimate.total) : "–";
   let html = `<div class="flex"><h2 style="margin:0;font-size:18px">${esc(title)}</h2><span class="badge ${job.state}">${job.state.replace("_", " ")}</span></div>
     <p class="muted">${job.workflow} · job ${job.id} · estimated ${est} · logged spend ${money(job.spent)} · ${esc(job.status)}</p>`;
@@ -471,6 +506,7 @@ function renderDetail(job) {
     html += `<div class="banner"><div style="flex:1">${esc(job.awaiting.message)}</div><button class="btn" id="approveBtn">Approve${job.awaiting.estimate ? " · " + money(job.awaiting.estimate) : ""}</button></div>`;
   if (job.state === "error")
     html += `<div class="banner error"><div style="flex:1">${esc(job.error || job.status)}</div><button class="btn ghost small" id="retryBtn">Retry failed steps</button></div>`;
+  if (job.review) html += reviewPanel(job);
   if (job.workflow === "short" && job.plan && job.state !== "running") html += storyboard(job);
   html += `<div class="outputs">${outs.filter(o => o.kind !== "file" && !/^Shot \d+ keyframe$/.test(o.label) || o.final).map(o => `<div class="out ${o.final ? "final" : ""}">${media(o)}<div class="lbl"><span>${esc(o.label)}</span><a href="${o.url}" download>Download</a></div></div>`).join("")}</div>`;
   const filesOut = outs.filter(o => o.kind === "file");
@@ -488,6 +524,21 @@ function renderDetail(job) {
     const edits = {visual: $("[data-f=visual]", card).value, narration: $("[data-f=narration]", card).value, motion: $("[data-f=motion]", card).value};
     try { await post("redo", {steps: [`key-${i}`], overrides: {[i]: edits}}); toast(`Regenerating shot ${+i + 1}`); openJob(job.id); } catch (e) { toast(e.message); }
   }));
+}
+function shotAt(job, t) {
+  const times = job.shot_times || [];
+  let i = 0; times.forEach((s, k) => { if (t >= s) i = k; });
+  return times.length ? i : null;
+}
+function reviewPanel(job) {
+  const r = job.review;
+  if (r.skipped) return `<p class="hint">${esc(r.skipped)}</p>`;
+  const pass = r.verdict === "PASS";
+  const rows = Object.entries(r.scores).map(([k, v]) => `<tr><td>${k.replace("_", " ")}</td><td style="color:${v >= 8 ? "var(--good)" : "var(--warn)"}"><b>${v}</b></td><td class="muted">${esc((r.reasons || {})[k] || "")}</td></tr>`).join("");
+  const probs = (r.problems || []).map(p => { const i = shotAt(job, p.time); return `<li>${p.time.toFixed(1)}s${i !== null ? ` (shot ${i + 1})` : ""}: ${esc(p.problem)}</li>`; }).join("");
+  return `<details ${pass ? "" : "open"} style="margin:12px 0"><summary>Fresh-eyes reviewer: <b style="color:${pass ? "var(--good)" : "var(--warn)"}">${r.verdict}</b> · overall ${r.scores.overall ?? "?"}/10 (bar: 8 on every axis)</summary>
+    <p><i>${esc(r.retell)}</i></p><div class="tablewrap"><table>${rows}</table></div><p><b>Three worst problems</b></p><ul>${probs}</ul>${r.looks_off ? `<p class="muted">Looks off: ${esc(r.looks_off)}</p>` : ""}
+    <p class="hint">The reviewer saw only frames and timed words, never the script. Fix a shot below with Redo, then the cut is rebuilt and can be scored again with <code>mw review ${job.id}</code>.</p></details>`;
 }
 function storyboard(job) {
   const keys = Object.fromEntries((job.outputs || []).filter(o => /^Shot \d+ keyframe$/.test(o.label)).map(o => [Number(o.label.split(" ")[1]) - 1, o.url]));

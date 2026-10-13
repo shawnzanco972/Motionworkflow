@@ -57,6 +57,8 @@ Final files live in `runs/JOB/`: `final.mp4`, `thumbnail.jpg`, `captions.srt`, `
 
 - `error` with a provider rejection: fix the cause (key, credits, input), then `mw retry JOB` (spends again — say so).
 - "still running": `mw resume JOB` later; it only polls, never resubmits.
+- The person wants to halt a job: `mw stop JOB` (requests already sent may still be billed; `mw resume JOB` collects them).
+- "how much would X cost?": `mw prices` (typical projects at each tier) or the command with `--estimate`.
 - "unclear whether the provider accepted": ask the user to check the provider dashboard before `mw retry JOB --force`.
 - Budget errors: report them; don't raise caps without the user's say-so.
 

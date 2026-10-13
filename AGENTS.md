@@ -15,6 +15,8 @@ Rules for any coding agent (Claude Code, Codex, …) operating MotionWorkflow fo
 - Always show the estimate first (`--estimate`), and get the user's go-ahead for anything above `MW_CONFIRM_ABOVE`. An explicit "go ahead, up to $X" counts; don't ask again within that scope.
 - Never raise `MW_DAILY_BUDGET` / `MW_MAX_COST_PER_JOB` or pass `--yes` on the user's behalf beyond what they authorized.
 - Approval gates (`storyboard`, `final`) belong to the user. Show them the storyboard / draft (paths are printed by `mw status`) and wait for approval unless they already said to proceed without review.
+- Before proposing a project, quote its cost (`mw <command> --estimate`, or `mw prices` for typical projects by tier).
+- `mw stop JOB` stops a running job before anything new is sent; `mw resume JOB` continues it.
 - Never resubmit to dodge a failure. `mw resume` only polls. `mw retry` resubmits failed steps (spends again). `mw retry --force` is only for steps whose outcome was unclear, and only after the user checked the provider dashboard.
 
 ## Creative rules

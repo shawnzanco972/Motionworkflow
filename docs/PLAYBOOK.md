@@ -4,7 +4,7 @@
 
 | Goal | Recipe | Approx. cost |
 |---|---|---|
-| Test an idea for free | Short Maker, **Free** tier (Pollinations images, no voice key needed for a silent cut) or paste your own script | $0 |
+| Test an idea for free | Short Maker, **Cheapest** tier (Pollinations images, no voice key needed for a silent cut) or paste your own script | $0 |
 | Faceless narrated short | Short Maker · Slideshow · Budget · 6 shots (FLUX schnell + Kokoro voice + captions) | ~$0.03 |
 | Same, with a recurring mascot | Add a **character** image → keyframes use Seedream edit (~$0.03 each) | ~$0.20 |
 | Short with real motion | Short Maker · Animated · Budget (LTX-Video) → review storyboard → approve | ~$0.15–0.30 |

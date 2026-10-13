@@ -439,7 +439,7 @@ details.more > .inner { margin-top: 14px; display: grid; gap: 16px; }
 .key-row:last-child { border-bottom: 0; }
 .key-row b { display: block; }
 .key-row .hint a { color: var(--accent); }
-.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+.table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.data th, table.data td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.data th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; background: var(--surface-2); position: sticky; top: 0; }
@@ -469,7 +469,7 @@ dialog::backdrop { background: rgb(5 6 10 / .62); backdrop-filter: blur(3px); }
   .summary { position: static; }
 }
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  .shell { grid-template-columns: minmax(0, 1fr); }
   .sidebar { position: fixed; z-index: 40; left: 0; top: 0; bottom: 0; width: 280px; transform: translateX(-100%); transition: transform .22s ease; box-shadow: var(--shadow-2); }
   .shell.nav-open .sidebar { transform: none; }
   .shell.nav-open .scrim { display: block; position: fixed; inset: 0; background: rgb(0 0 0 / .5); z-index: 30; }
@@ -550,7 +550,7 @@ a.meter:hover { border-color: var(--line-2); }
 .hbar b { font-variant-numeric: tabular-nums; font-weight: 650; }
 .nowrap { white-space: nowrap; }
 @media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .stats { gap: 10px; } .stats .stat { padding: 12px 14px; } .stats .stat .v { font-size: 20px; } .hide-sm { display: none; } table.data th, table.data td { padding: 9px 8px; } }
+@media (max-width: 560px) { #projSearch { flex: 1 1 100%; width: 100% !important; } .toolbar .spacer { display: none; } .pcard .cover { aspect-ratio: 16 / 9; } .stats { gap: 10px; } .stats .stat { padding: 12px 14px; } .stats .stat .v { font-size: 20px; } .hide-sm { display: none; } table.data th, table.data td { padding: 9px 8px; } }
 .badge.stopped { background: var(--surface-3); color: var(--text-2); }
 /* Overflow menu */
 .menu { position: relative; }

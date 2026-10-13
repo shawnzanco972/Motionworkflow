@@ -13,7 +13,8 @@ function setCrumbs(parts) {
   $("#crumbs").innerHTML = parts.map((p, i) => i === parts.length - 1
     ? `<span class="here">${esc(p.label)}</span>`
     : `<a href="${p.href}">${esc(p.label)}</a>${icon("chev")}`).join("");
-  document.title = `${parts[parts.length - 1].label} · MotionWorkflow`;
+  const waiting = state.status?.jobs?.awaiting_approval || 0;
+  document.title = `${waiting ? `(${waiting}) ` : ""}${parts[parts.length - 1].label} · MotionWorkflow`;
 }
 
 function setActive(route) {
@@ -24,9 +25,28 @@ function setActive(route) {
   });
 }
 
+// Tell the person when a project needs them or finishes, wherever they are in the app.
+let seen = null;
+function notify(st) {
+  const items = st.attention || [];
+  const key = (x) => `${x.id}:${x.state}:${x.stage || ""}`;
+  if (seen === null) { seen = new Set(items.map(key)); return; }  // first load: nothing is "new"
+  const here = location.hash.replace(/^#\/?/, "");
+  for (const x of items) {
+    if (seen.has(key(x))) continue;
+    seen.add(key(x));
+    if (here === `projects/${x.id}`) continue;  // already looking at it
+    const href = `#/projects/${x.id}`;
+    if (x.state === "awaiting_approval") toast(`“${x.title}” is ready for your review.`, "warn", 12000, { label: "Review", href });
+    else if (x.state === "done") toast(`“${x.title}” is finished.`, "good", 9000, { label: "Open", href });
+    else if (x.state === "error") toast(`“${x.title}” stopped with a problem.`, "bad", 12000, { label: "See why", href });
+  }
+}
+
 function drawShell() {
   const st = state.status;
   if (!st) return;
+  notify(st);
   const b = st.budget;
   $("#spentToday").textContent = money(b.spent_today);
   $("#dailyBudget").textContent = money(b.daily_budget);
@@ -38,6 +58,8 @@ function drawShell() {
   const nav = $("#navProjects");
   nav.className = `count ${waiting ? "alert" : ""}`;
   nav.textContent = waiting ? `${waiting} to approve` : working ? `${working} working` : "";
+  document.title = document.title.replace(/^\(\d+\) /, "");
+  if (waiting) document.title = `(${waiting}) ${document.title}`;
   const lib = st.library.avatars + st.library.voices;
   $("#navAssets").textContent = lib ? String(lib) : "";
   $("#navSpend").textContent = b.spent_today > 0 ? `${money(b.spent_today)} today` : "";
@@ -64,7 +86,12 @@ async function route() {
       setCrumbs([{ label: "Create", href: "#/" }, { label: svc.eyebrow.split(" ·")[0] }]);
       await refreshLibrary();
       const view = renderCreatePage(page, svc);
-      if (query.get("avatar")) { view.ctx.values.avatar_id = query.get("avatar"); view.rerenderPickers(); view.ctx.changed(); }
+      const pre = {};
+      for (const k of ["avatar", "voice"]) if (query.has(k)) pre[`${k}_id`] = query.get(k);
+      if (Object.keys(pre).length) { Object.assign(view.ctx.values, pre); view.rerenderPickers(); }
+      const tier = query.get("tier") && $(`input[name="tier"][value="${CSS.escape(query.get("tier"))}"]`, page);
+      if (tier) tier.checked = true;
+      if (Object.keys(pre).length || tier) view.ctx.changed();
     } else if (key === "projects" && parts[1]) {
       setCrumbs([{ label: "Projects", href: "#/projects" }, { label: "…" }]);
       cleanup = await project(page, parts[1], (title) => setCrumbs([{ label: "Projects", href: "#/projects" }, { label: title }]));
@@ -93,7 +120,11 @@ async function route() {
 
 $("#menuBtn").onclick = () => $("#shell").classList.add("nav-open");
 $("#scrim").onclick = () => $("#shell").classList.remove("nav-open");
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#shell").classList.remove("nav-open"); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { $("#shell").classList.remove("nav-open"); $$("details.menu[open]").forEach((d) => d.removeAttribute("open")); }
+});
+// Close an open "more" menu when clicking anywhere else.
+document.addEventListener("click", (e) => { $$("details.menu[open]").forEach((d) => { if (!d.contains(e.target) || e.target.closest(".menu-pop")) d.removeAttribute("open"); }); });
 
 window.addEventListener("hashchange", route);
 onState(drawShell);

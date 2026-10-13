@@ -455,7 +455,8 @@ dialog::backdrop { background: rgb(5 6 10 / .62); backdrop-filter: blur(3px); }
 .toasts { position: fixed; bottom: 20px; right: 20px; display: grid; gap: 8px; z-index: 50; }
 .toast { background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; padding: 11px 14px; box-shadow: var(--shadow-2); display: flex; gap: 10px; align-items: center; max-width: 380px; font-size: 13.5px; animation: rise .2s ease-out; }
 .toast .icon { width: 16px; height: 16px; }
-.toast.good .icon { color: var(--good); } .toast.bad .icon { color: var(--bad); } .toast.info .icon { color: var(--info); }
+.toast.good .icon { color: var(--good); } .toast.warn .icon { color: var(--warn); }
+.toast .btn { margin-left: auto; flex: none; } .toast.bad .icon { color: var(--bad); } .toast.info .icon { color: var(--info); }
 @keyframes rise { from { transform: translateY(8px); opacity: 0; } }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 12px; }
 @keyframes shimmer { to { background-position: -200% 0; } }
@@ -549,3 +550,15 @@ a.meter:hover { border-color: var(--line-2); }
 .nowrap { white-space: nowrap; }
 @media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .stats { gap: 10px; } .stats .stat { padding: 12px 14px; } .stats .stat .v { font-size: 20px; } .hide-sm { display: none; } table.data th, table.data td { padding: 9px 8px; } }
+.badge.stopped { background: var(--surface-3); color: var(--text-2); }
+/* Overflow menu */
+.menu { position: relative; }
+.menu > summary { list-style: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 25; width: 290px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: var(--shadow-2); padding: 6px; display: grid; gap: 2px; }
+.menu-pop button, .menu-pop a { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 9px 10px; border-radius: 9px; border: 0; background: none; color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; text-decoration: none; }
+.menu-pop button:hover, .menu-pop a:hover, .menu-pop button:focus-visible, .menu-pop a:focus-visible { background: var(--surface-2); outline: none; }
+.menu-pop .icon { width: 16px; height: 16px; color: var(--muted); flex: none; align-self: flex-start; margin-top: 2px; }
+.menu-pop .sub { display: block; color: var(--muted); font-size: 12px; }
+.menu-pop .danger, .menu-pop .danger .icon { color: var(--bad); }
+.menu-pop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }

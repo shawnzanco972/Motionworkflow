@@ -51,6 +51,7 @@ class ReplicateProvider(Provider):
         deadline = time.time() + timeout
         last = ""
         while time.time() < deadline:
+            status("")  # a heartbeat: lets the job stop between polls
             try:
                 r = requests.get(handle["get_url"], headers=self._headers(), timeout=30)
                 r.raise_for_status()

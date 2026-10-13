@@ -73,16 +73,17 @@ export const WORKFLOWS = {
   swap: { label: "Swap", icon: "swap", color: "c6" },
 };
 
-export const STATE_LABEL = { done: "Done", error: "Failed", awaiting_approval: "Needs approval", running: "Working", queued: "Queued" };
+export const STATE_LABEL = { done: "Done", error: "Failed", awaiting_approval: "Needs approval", running: "Working", queued: "Queued", stopped: "Stopped" };
 export const badge = (st) => `<span class="badge ${esc(st)}">${esc(STATE_LABEL[st] || st)}</span>`;
 
 // Toasts ------------------------------------------------------------------------
-export function toast(message, kind = "info", ms = 4200) {
+export function toast(message, kind = "info", ms = 4200, action = null) {
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
-  el.innerHTML = `${icon(kind === "good" ? "check" : kind === "bad" ? "alert" : "info")}<span>${esc(message)}</span>`;
+  el.innerHTML = `${icon(kind === "good" ? "check" : kind === "bad" ? "alert" : kind === "warn" ? "alert" : "info")}<span>${esc(message)}</span>${action ? `<a class="btn sm" href="${esc(action.href)}">${esc(action.label)}</a>` : ""}`;
   $("#toasts").appendChild(el);
-  setTimeout(() => el.remove(), ms);
+  const t = setTimeout(() => el.remove(), ms);
+  el.querySelector("a")?.addEventListener("click", () => { clearTimeout(t); el.remove(); });
 }
 
 // Dialogs ------------------------------------------------------------------------

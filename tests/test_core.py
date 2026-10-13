@@ -187,6 +187,65 @@ class GenerateTests(IsolatedTest):
         self.assertEqual(self.fake.submits, 1)
 
 
+    def test_stop_before_submit_spends_nothing(self):
+        job = jobs.create("image", {})
+        job.request_stop()
+        with self.assertRaises(jobs.JobStopped):
+            common.generate(job, "s", self.model, {"prompt": "x"}, "Step")
+        self.assertEqual(self.fake.submits, 0)
+        self.assertAlmostEqual(budget.spent_on_job(job.id), 0.0)
+
+    def test_stop_while_polling_keeps_the_request_and_resume_collects_it(self):
+        job = jobs.create("image", {})
+
+        def wait(model, handle, status, timeout=0):
+            job.request_stop()  # pressed Stop while the provider is generating
+            status("")
+            return {"url": "x"}
+
+        with mock.patch.object(self.fake, "wait", side_effect=wait):
+            with self.assertRaises(jobs.JobStopped):
+                common.generate(job, "s", self.model, {"prompt": "x"}, "Step")
+        self.assertEqual(job.step("s")["state"], "running")
+        self.assertTrue(job.step("s")["handle"])
+        job.clear_stop()
+        files = common.generate(job, "s", self.model, {"prompt": "x"}, "Step")
+        self.assertTrue(files[0].exists())
+        self.assertEqual(self.fake.submits, 1)  # resumed, not paid twice
+        self.assertAlmostEqual(budget.spent_on_job(job.id), 0.01)
+
+    def test_run_marks_a_stopped_job_and_resume_finishes_it(self):
+        from motionworkflow import workflows
+
+        self.patch.stop()  # use the real offline mock provider
+        try:
+            job = jobs.create("image", {"prompt": "x", "model": "mock:image"})
+            stop_once = lambda j, message: j.request_stop() if message == "Working" else None  # noqa: E731
+            jobs.listeners.append(stop_once)
+            try:
+                workflows.run(job)
+            finally:
+                jobs.listeners.remove(stop_once)
+            self.assertEqual(job.data["state"], "stopped", job.data.get("error"))
+            self.assertFalse(job.stop_requested())  # the flag never outlives a run
+            self.assertFalse(any(st.get("handle") for st in job.data["steps"].values()))  # nothing was sent
+            workflows.run(job)
+            self.assertEqual(job.data["state"], "done")
+        finally:
+            self.patch.start()
+
+    def test_stop_requested_while_nothing_runs_it(self):
+        from motionworkflow import workflows
+
+        job = jobs.create("image", {"prompt": "x", "model": "mock:image"})
+        job.status("Working", "running")  # e.g. left over after the app was closed
+        job.request_stop()  # `mw stop` from another terminal
+        workflows.resume_all()
+        self.assertEqual(job.data["state"], "stopped")
+        with self.assertRaises(ValueError):
+            workflows.stop(job)
+
+
 class FalAdapterTests(IsolatedTest):
     def test_submit_and_wait(self):
         self.env(FAL_KEY="k")

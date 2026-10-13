@@ -66,6 +66,7 @@ class EnhancorProvider(Provider):
         deadline = time.time() + timeout
         last = ""
         while time.time() < deadline:
+            status("")  # a heartbeat: lets the job stop between polls
             try:
                 r = requests.post(base_url() + "status", headers=self._headers(),
                                   json={"request_id": handle["request_id"]}, timeout=30)

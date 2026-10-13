@@ -7,14 +7,18 @@ spend your credits or read your keys.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import tempfile
+import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from . import __version__, budget, catalog, config, genjutsu, jobs, library, media, validation, webhook, workflows
 from .providers.base import AUDIO_EXT, IMAGE_EXT, VIDEO_EXT
@@ -180,7 +184,19 @@ def status():
         },
         "library": {kind: len(library.items(kind)) for kind in library.KINDS},
         "jobs": _job_counts(),
+        "attention": _attention(),
     }
+
+
+def _attention() -> list[dict]:
+    """Projects that just need you (approval) or just finished/failed, newest first, for notifications."""
+    out = []
+    for job in jobs.all_jobs(100):
+        state = job.data["state"]
+        if state in (jobs.WAITING, jobs.DONE, jobs.ERROR, jobs.STOPPED):
+            out.append({"id": job.id, "state": state, "title": _title(job), "updated": job.data.get("updated"),
+                        "stage": (job.data.get("awaiting") or {}).get("stage")})
+    return sorted(out, key=lambda x: x["updated"] or "", reverse=True)[:20]
 
 
 def _job_counts() -> dict:
@@ -356,8 +372,65 @@ async def redo(job_id: str, request: Request):
 @app.post("/api/jobs/{job_id}/resume")
 def resume(job_id: str):
     job = _job(job_id)
+    if job.data.get("state") in (jobs.DONE, jobs.WAITING):
+        raise HTTPException(409, "Nothing to resume." if job.data["state"] == jobs.DONE else "This project is waiting for your approval.")
     workflows.start(job)
     return _public(job)
+
+
+@app.post("/api/jobs/{job_id}/stop")
+def stop(job_id: str):
+    job = _job(job_id)
+    try:
+        result = workflows.stop(job)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    return {**_public(job), "stop": result}
+
+
+@app.post("/api/jobs/{job_id}/duplicate")
+async def duplicate(job_id: str, request: Request):
+    """A new project with the same inputs and settings (your edits to the script or shots included)."""
+    job = _job(job_id)
+    body = await request.json() if (await request.body()) else {}
+    values = json.loads(json.dumps(job.params))
+    values.pop("overrides", None)
+    plan = job.data.get("plan") or {}
+    if job.data["workflow"] == "presenter" and plan.get("lines") and body.get("keep_script", True):
+        values["script"] = "\n".join(line["text"] for line in plan["lines"])  # reuse the reviewed words
+    files = {field: [job.folder / rel for rel in rels] for field, rels in job.data.get("inputs", {}).items()}
+    files = {k: [p for p in v if p.exists()] for k, v in files.items()}
+    counts = {k: len(v) for k, v in files.items() if v}
+    counts["avatar_is_video"] = bool(files.get("avatar") and files["avatar"][0].suffix.lower() in VIDEO_EXT)
+    try:
+        quote = workflows.check_start(job.data["workflow"], values, counts, bool(body.get("confirm")))
+    except workflows.NeedsConfirmation as exc:
+        return JSONResponse({"detail": str(exc), "needs_confirmation": True, "quote": exc.quote}, status_code=402)
+    except (ValueError, budget.BudgetExceeded, config.MissingKey) as exc:
+        raise HTTPException(400, str(exc)) from None
+    copy = jobs.create(job.data["workflow"], values, {k: v for k, v in files.items() if v})
+    copy.data["estimate"] = quote
+    copy.data["duplicate_of"] = job.id
+    copy.save()
+    workflows.start(copy)
+    return _public(copy)
+
+
+@app.get("/api/jobs/{job_id}/download")
+def download_all(job_id: str):
+    """Every output (final, parts, script, review) in one zip."""
+    job = _job(job_id)
+    outputs = [o for o in job.data.get("outputs", []) if (job.folder / o["path"]).is_file()]
+    if not outputs:
+        raise HTTPException(404, "Nothing to download yet.")
+    fd, tmp = tempfile.mkstemp(suffix=".zip", dir=config.RUNS)
+    os.close(fd)
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:  # media is already compressed
+        for o in outputs:
+            zf.write(job.folder / o["path"], o["path"])
+    name = re.sub(r"[^A-Za-z0-9]+", "-", _title(job)).strip("-")[:50] or job.id
+    return FileResponse(tmp, filename=f"{name}.zip", media_type="application/zip",
+                        background=BackgroundTask(os.unlink, tmp))
 
 
 @app.delete("/api/jobs/{job_id}")

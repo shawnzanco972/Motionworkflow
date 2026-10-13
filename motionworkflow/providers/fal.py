@@ -52,6 +52,7 @@ class FalProvider(Provider):
         deadline = time.time() + timeout
         last = ""
         while time.time() < deadline:
+            status("")  # a heartbeat: lets the job stop between polls
             try:
                 r = requests.get(handle["status_url"], headers=headers, timeout=30)
                 r.raise_for_status()

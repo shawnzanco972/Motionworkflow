@@ -61,6 +61,7 @@ def generate(job: Job, key: str, model: dict, params: dict, label: str, body: di
     handle = step.get("handle")
 
     if not handle:
+        job.checkpoint()  # never send a new paid request after Stop
         cost = catalog.estimate(model, params) if estimate is None else estimate
         job.status(f"{label}: preparing ({model['name']}, ~${cost:.3f})")
         request_body = body if body is not None else catalog.build_input(model, _prepare(provider, params))
@@ -84,7 +85,8 @@ def generate(job: Job, key: str, model: dict, params: dict, label: str, body: di
             job.data["used_mock"] = True
 
     try:
-        result = provider.wait(model, handle, lambda message: job.status(f"{label}: {message}"))
+        result = provider.wait(model, handle, lambda message: job.status(f"{label}: {message}") if message
+                               else job.checkpoint())
         files = provider.collect(model, handle, result, workdir / key.replace("/", "-"))
     except StillRunning as exc:
         raise StepFailed(str(exc)) from exc

@@ -6,7 +6,7 @@ import threading
 import traceback
 
 from .. import budget, jobs, validation
-from ..jobs import DONE, ERROR, RUNNING, WAITING, Job
+from ..jobs import DONE, ERROR, RUNNING, STOPPED, WAITING, Job, JobStopped
 from . import image, presenter, short, swap, video, voice
 from .common import StepFailed
 
@@ -63,12 +63,16 @@ def run(job: Job) -> Job:
             return job
         _active.add(job.id)
     try:
+        job.clear_stop()
         job.data.pop("error", None)
         job.status("Working", RUNNING)
         module(job.data["workflow"]).run(job)
         if job.data.get("state") != WAITING:
             note = " (mock output: add an API key for real media)" if job.data.get("used_mock") else ""
             job.status("Finished" + note, DONE)
+    except JobStopped:
+        job.status("Stopped. Requests already sent may still finish at the provider; Resume collects them "
+                   "without paying twice.", STOPPED)
     except (StepFailed, ValueError, budget.BudgetExceeded) as exc:
         job.data["error"] = str(exc)
         job.status(str(exc), ERROR)
@@ -77,9 +81,21 @@ def run(job: Job) -> Job:
         job.data["traceback"] = traceback.format_exc()[-4000:]
         job.status(job.data["error"], ERROR)
     finally:
+        job.clear_stop()
         with _active_lock:
             _active.discard(job.id)
     return job
+
+
+def stop(job: Job) -> str:
+    """Stop a job at its next checkpoint. Returns what happened, for the UI."""
+    if is_active(job.id):
+        job.request_stop()
+        return "stopping"
+    if job.data.get("state") in (RUNNING, "queued"):  # left over from a closed app
+        job.status("Stopped.", STOPPED)
+        return "stopped"
+    raise ValueError("This project isn't running.")
 
 
 def start(job: Job, background: bool = True) -> Job:
@@ -162,10 +178,14 @@ def resume_all() -> list[str]:
     resumed = []
     for job in jobs.all_jobs(limit=500):
         if job.data.get("state") in (RUNNING, "queued") and not is_active(job.id):
+            if job.stop_requested():  # stopped from the CLI while nothing was running it
+                job.clear_stop()
+                job.status("Stopped.", STOPPED)
+                continue
             start(job)
             resumed.append(job.id)
     return resumed
 
 
-__all__ = ["WORKFLOWS", "estimate", "check_start", "run", "start", "retry", "redo", "resume_all",
+__all__ = ["WORKFLOWS", "estimate", "check_start", "run", "start", "stop", "retry", "redo", "resume_all",
            "NeedsConfirmation", "DONE", "ERROR", "WAITING"]

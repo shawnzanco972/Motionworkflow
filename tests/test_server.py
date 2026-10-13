@@ -99,6 +99,52 @@ class ServerTests(IsolatedTest):
         self.assertEqual(spend["by_workflow"][0]["workflow"], "deleted")
         self.assertEqual(spend["recent"][0]["title"], "Deleted project")
 
+    def test_stop_duplicate_download_and_resume_rules(self):
+        import io
+        import zipfile
+
+        r = self.client.post("/api/jobs", data={"workflow": "image", "params": json.dumps({"prompt": "a fox", "tier": "free"})},
+                             files={"refs": ("ref.png", self.make_image().read_bytes(), "image/png")})
+        job = self.wait(r.json()["id"])
+        self.assertEqual(job["state"], "done")
+        self.assertEqual(self.client.post(f"/api/jobs/{job['id']}/stop").status_code, 409)  # not running
+        self.assertEqual(self.client.post(f"/api/jobs/{job['id']}/resume").status_code, 409)  # nothing to resume
+
+        z = self.client.get(f"/api/jobs/{job['id']}/download")
+        self.assertEqual(z.status_code, 200)
+        self.assertIn("a-fox", z.headers["content-disposition"])
+        names = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+        self.assertEqual(len(names), len(job["outputs"]))
+        self.assertFalse(any(n.startswith("inputs/") or n == "job.json" for n in names))
+        self.assertEqual(list(config.RUNS.glob("*.zip")), [])  # temp zip cleaned up
+
+        copy = self.client.post(f"/api/jobs/{job['id']}/duplicate", json={}).json()
+        self.assertNotEqual(copy["id"], job["id"])
+        self.assertEqual(copy["duplicate_of"], job["id"])
+        self.assertEqual(copy["params"]["prompt"], "a fox")
+        self.assertEqual(len(copy["inputs"]["refs"]), 1)  # inputs travel with the copy
+        self.assertEqual(self.wait(copy["id"])["state"], "done")
+
+    def test_duplicate_asks_before_a_large_spend(self):
+        self.env(FAL_KEY="x", MW_CONFIRM_ABOVE="0.10")
+        src = jobs.create("video", {"prompt": "x", "model": "fal:veo31-fast", "duration": 8})
+        r = self.client.post(f"/api/jobs/{src.id}/duplicate", json={})
+        self.assertEqual(r.status_code, 402)
+        self.assertTrue(r.json()["needs_confirmation"])
+        self.assertEqual(len(jobs.all_jobs()), 1)
+
+    def test_download_with_nothing_yet(self):
+        src = jobs.create("image", {"prompt": "x"})
+        self.assertEqual(self.client.get(f"/api/jobs/{src.id}/download").status_code, 404)
+
+    def test_status_lists_what_needs_attention(self):
+        params = {"prompt": "x", "duration": 2, "model": "mock:video", "final_model": "mock:video"}
+        job = self.client.post("/api/jobs", data={"workflow": "video", "params": json.dumps(params)}).json()
+        self.wait(job["id"])
+        attention = self.client.get("/api/status").json()["attention"]
+        self.assertEqual(attention[0]["id"], job["id"])
+        self.assertEqual(attention[0]["stage"], "final")
+
     def test_spend_with_empty_ledger(self):
         spend = self.client.get("/api/spend").json()
         self.assertEqual(spend["all_time"], 0)

@@ -24,6 +24,16 @@ _locks_guard = threading.Lock()
 
 # States a job can be in.
 QUEUED, RUNNING, WAITING, DONE, ERROR = "queued", "running", "awaiting_approval", "done", "error"
+STOPPED = "stopped"
+
+
+class JobStopped(BaseException):
+    """Raised at the next checkpoint after someone presses Stop.
+
+    A BaseException so that broad `except Exception` handlers in workflows
+    can't swallow it. Requests already sent keep their saved handle, so
+    Resume picks them up without paying twice.
+    """
 
 
 def now() -> str:
@@ -66,7 +76,24 @@ class Job:
             tmp.replace(self.folder / "job.json")
 
     # -- state ------------------------------------------------------------
+    def stop_requested(self) -> bool:
+        # A file, so `mw stop` in another process can stop a job the web app is running.
+        return (self.folder / "stop").exists()
+
+    def request_stop(self) -> None:
+        (self.folder / "stop").write_text(now())
+
+    def clear_stop(self) -> None:
+        (self.folder / "stop").unlink(missing_ok=True)
+
+    def checkpoint(self) -> None:
+        if self.stop_requested():
+            raise JobStopped()
+
     def status(self, message: str, state: str | None = None) -> None:
+        """Record progress. A progress update (no new state) is also a stop checkpoint."""
+        if state is None:
+            self.checkpoint()
         with _lock(self.id):
             self.data["status"] = message
             if state:

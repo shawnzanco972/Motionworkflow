@@ -1,7 +1,7 @@
 // Pages other than the Create forms: Home, Projects, Project, Assets, Settings.
 
 import {
-  $, $$, api, badge, confirmAction, confirmSpend, esc, icon, money, openDialog, refreshLibrary, refreshModels,
+  $, $$, api, badge, confirmAction, confirmSpend, draft, esc, icon, money, openDialog, refreshLibrary, refreshModels,
   refreshStatus, state, STATE_LABEL, timeAgo, toast, WORKFLOWS,
 } from "./core.js";
 import { addAvatarDialog, addVoiceDialog } from "./modals.js";
@@ -81,23 +81,35 @@ export async function home(page) {
 export async function projects(page, query) {
   const filter = query.get("f") || "all";
   const kind = query.get("type") || "";
-  const jobs = await api("/api/jobs?limit=200");
-  const filters = [["all", "All"], ["awaiting_approval", "Needs approval"], ["running", "Working"], ["done", "Done"], ["error", "Failed"]];
-  const shown = jobs.filter((j) => (filter === "all" || j.state === filter || (filter === "running" && j.state === "queued")) && (!kind || j.workflow === kind));
-  const shownSpend = shown.reduce((a, j) => a + (j.cost?.spent || 0), 0);
+  const jobs = await api("/api/jobs?limit=500");
+  const filters = [["all", "All"], ["awaiting_approval", "Needs approval"], ["running", "Working"], ["done", "Done"], ["error", "Failed"], ["stopped", "Stopped"]];
+  const inFilter = (j, v) => v === "all" || j.state === v || (v === "running" && j.state === "queued");
+  const byFilter = jobs.filter((j) => inFilter(j, filter) && (!kind || j.workflow === kind));
   page.innerHTML = `
     <div class="page-head"><div class="titles"><h1 class="page-title">Projects</h1><p class="page-sub">Everything you've made. Open one to watch it, approve the next step, or fix a part.</p></div>
       <a class="btn primary" href="#/create/presenter">${icon("plus")}New</a></div>
     <div class="toolbar">
-      <div class="chips" role="tablist">${filters.map(([v, l]) => { const n = v === "all" ? jobs.length : jobs.filter((j) => j.state === v || (v === "running" && j.state === "queued")).length;
-        return `<a class="chip ${v === filter ? "active" : ""}" href="#/projects?f=${v}${kind ? `&type=${kind}` : ""}" role="tab" aria-selected="${v === filter}">${l} <span class="muted">${n}</span></a>`; }).join("")}</div>
+      <div class="chips" aria-label="Filter by status">${filters.map(([v, l]) => { const n = jobs.filter((j) => inFilter(j, v)).length;
+        if (v === "stopped" && !n && filter !== v) return "";
+        return `<a class="chip ${v === filter ? "active" : ""}" href="#/projects?f=${v}${kind ? `&type=${kind}` : ""}" ${v === filter ? 'aria-current="true"' : ""}>${l} <span class="muted">${n}</span></a>`; }).join("")}</div>
       <div class="spacer" style="flex:1"></div>
-      <a class="muted small" href="#/spending" title="See spending">${shown.length} project${shown.length === 1 ? "" : "s"} · ${money(shownSpend)} spent</a>
+      <input class="input" type="search" id="projSearch" placeholder="Search titles…" aria-label="Search projects" style="width:min(240px,100%)">
       <select class="select" style="width:auto" aria-label="Type" id="typeFilter"><option value="">All types</option>${Object.entries(WORKFLOWS).map(([k, w]) => `<option value="${k}" ${k === kind ? "selected" : ""}>${w.label}</option>`).join("")}</select>
     </div>
-    ${shown.length ? `<div class="cards">${shown.map(projectCard).join("")}</div>`
-      : emptyState("grid", filter === "all" ? "Nothing here yet" : "Nothing in this view", filter === "all" ? "Start something and it lands here." : "Try another filter.", filter === "all" ? `<a class="btn primary" href="#/create/presenter">${icon("plus")}Create</a>` : "")}`;
+    <div class="muted small" id="projCount" style="margin:-6px 0 12px"></div>
+    <div id="projList"></div>`;
+  const draw = () => {
+    const q = $("#projSearch").value.trim().toLowerCase();
+    const shown = q ? byFilter.filter((j) => `${j.title} ${j.params?.prompt || ""} ${j.params?.topic || ""} ${j.params?.idea || ""}`.toLowerCase().includes(q)) : byFilter;
+    const spent = shown.reduce((a, j) => a + (j.cost?.spent || 0), 0);
+    $("#projCount").innerHTML = `${shown.length} project${shown.length === 1 ? "" : "s"} · <a href="#/spending">${money(spent)} spent</a>`;
+    $("#projList").innerHTML = shown.length ? `<div class="cards">${shown.map(projectCard).join("")}</div>`
+      : q ? emptyState("grid", "No matches", `Nothing called “${esc(q)}” in this view.`)
+      : emptyState("grid", filter === "all" ? "Nothing here yet" : "Nothing in this view", filter === "all" ? "Start something and it lands here." : "Try another filter.", filter === "all" ? `<a class="btn primary" href="#/create/presenter">${icon("plus")}Create</a>` : "");
+  };
+  $("#projSearch").addEventListener("input", draw);
   $("#typeFilter").onchange = (e) => (location.hash = `#/projects?f=${filter}${e.target.value ? `&type=${e.target.value}` : ""}`);
+  draw();
 }
 
 // -- Project ------------------------------------------------------------------------------
@@ -120,6 +132,21 @@ const stepLabel = (note) => {
   return why ? `${base} (refund: ${why})` : base;
 };
 const modelName = (id) => (state.models.find((m) => m.id === id)?.name) || (id === "claude:review" ? "Claude reviewer" : id || "");
+
+// Turn a failure into the one thing to do about it.
+function errorActions(job) {
+  const e = job.error || job.status || "";
+  const key = e.match(/\b(FAL_KEY|ANTHROPIC_API_KEY|REPLICATE_API_TOKEN|ENHANCOR_API_KEY)\b/);
+  const parts = [];
+  if (key) parts.push(`<a class="btn primary" href="#/settings/keys">${icon("key")}Add ${{ FAL_KEY: "fal.ai", ANTHROPIC_API_KEY: "Claude", REPLICATE_API_TOKEN: "Replicate", ENHANCOR_API_KEY: "Enhancor" }[key[1]]} key</a>`);
+  if (/MW_DAILY_BUDGET|MW_MAX_COST_PER_JOB|budget/i.test(e)) parts.push(`<a class="btn" href="#/settings/budget">${icon("wallet")}Budget limits</a>`);
+  if (/unclear whether the provider accepted/i.test(e)) {
+    parts.push(`<button class="btn" data-act="retry-force" title="Check your provider dashboard first: this can pay twice">${icon("refresh")}Send again anyway</button>`);
+  } else {
+    parts.push(`<button class="btn ${parts.length ? "" : "primary"}" data-act="retry">${icon("refresh")}Retry failed steps</button>`);
+  }
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${parts.join("")}</div>`;
+}
 
 function costPill(j) {
   const c = j.cost || {};
@@ -275,17 +302,54 @@ export async function project(page, id, setCrumb) {
         <div class="eyebrow">${icon(w.icon)}${w.label}</div>
         <h1 class="page-title">${esc(job.title)}</h1>
         <div class="flex" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">${badge(job.state)}${costPill(job)}<span class="muted small">${timeAgo(job.created)}${busy ? ` · ${esc(job.status)}` : ""}</span></div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           ${final ? `<a class="btn primary" href="${final.url}" download>${icon("download")}Download</a>` : ""}
-          ${!job.active && (job.state === "running" || job.state === "queued") ? `<button class="btn" data-act="resume">${icon("refresh")}Resume</button>` : ""}
-          ${!busy ? `<button class="btn ghost danger" data-act="delete" aria-label="Delete project">${icon("trash")}</button>` : ""}
+          ${job.active ? `<button class="btn" data-act="stop">${icon("stop")}Stop</button>` : ""}
+          ${!job.active && ["running", "queued", "stopped"].includes(job.state) ? `<button class="btn" data-act="resume">${icon("play")}Resume</button>` : ""}
+          <details class="menu"><summary class="btn ghost icon-btn" aria-label="More actions" title="More actions">${icon("dots")}</summary>
+            <div class="menu-pop" role="menu">
+              <button role="menuitem" data-act="again">${icon("refresh")}<span>Run again<span class="sub">Same inputs and settings, new takes</span></span></button>
+              <button role="menuitem" data-act="edit">${icon("edit")}<span>Edit as new<span class="sub">Open the form with these settings</span></span></button>
+              ${(job.outputs || []).length ? `<a role="menuitem" href="/api/jobs/${job.id}/download" download>${icon("download")}<span>Download everything<span class="sub">Final, parts, script and review (.zip)</span></span></a>` : ""}
+              ${!busy ? `<hr><button role="menuitem" class="danger" data-act="delete">${icon("trash")}<span>Delete project</span></button>` : ""}
+            </div></details>
         </div></div>
       ${job.state === "awaiting_approval" && job.awaiting ? `<div class="approval">${icon("alert", "xl")}<div class="txt"><b>${stTitle}</b><span>${esc(job.awaiting.message || stText)}</span></div>
         <button class="btn primary lg" data-act="approve">${icon("check")}Approve${job.awaiting.estimate ? ` · ${money(job.awaiting.estimate)}` : ""}</button></div>` : ""}
-      ${job.state === "error" ? `<div class="approval" style="border-color:color-mix(in srgb,var(--bad) 55%,transparent);background:color-mix(in srgb,var(--bad) 8%,var(--surface))">${icon("alert", "xl")}<div class="txt"><b>Something stopped this job</b><span>${esc(job.error || job.status)}</span></div><button class="btn" data-act="retry">${icon("refresh")}Retry failed steps</button></div>` : ""}
+      ${job.state === "error" ? `<div class="approval" style="border-color:color-mix(in srgb,var(--bad) 55%,transparent);background:color-mix(in srgb,var(--bad) 8%,var(--surface))">${icon("alert", "xl")}<div class="txt"><b>Something stopped this job</b><span>${esc(job.error || job.status)}</span></div>${errorActions(job)}</div>` : ""}
+      ${job.state === "stopped" && !job.active ? `<div class="approval" style="border-color:var(--line-2);background:var(--surface)">${icon("stop", "xl")}<div class="txt"><b>Stopped</b><span>Nothing new is sent while it's stopped. Requests already sent may still finish at the provider (and be billed); Resume collects them without paying twice.</span></div><button class="btn primary" data-act="resume">${icon("play")}Resume</button></div>` : ""}
       ${job.warning ? `<div class="notice warn" style="margin-bottom:18px">${icon("info")}<span>${esc(job.warning)}</span></div>` : ""}
       <div class="detail"><div>${mainMedia()}${scriptEditor()}${storyboard()}${review()}${gallery()}</div><aside>${side()}</aside></div>`;
     bind();
+  }
+
+  async function startCopy() {
+    try {
+      return await post("duplicate", {});
+    } catch (e) {
+      if (e.status === 402 && e.data?.needs_confirmation) {
+        if (!(await confirmSpend(e.data.quote, "A new project with the same inputs and settings."))) return null;
+        return await post("duplicate", { confirm: true });
+      }
+      throw e;
+    }
+  }
+
+  function editAsNew() {
+    const keep = {};
+    for (const [k, v] of Object.entries(job.params || {})) {
+      if (k === "overrides" || v === null || typeof v === "object") continue;
+      keep[k] = typeof v === "boolean" ? v : String(v);
+    }
+    if (job.workflow === "presenter" && job.plan?.lines) keep.script = job.plan.lines.map((l) => l.text).join("\n");
+    draft.save(job.workflow, keep);
+    const q = new URLSearchParams();
+    if (job.params?.avatar_id) q.set("avatar", job.params.avatar_id);
+    if (job.params?.voice_id !== undefined) q.set("voice", job.params.voice_id || "");
+    if (job.params?.tier) q.set("tier", job.params.tier);
+    const uploads = Object.keys(job.inputs || {}).filter((f) => !(f === "avatar" && job.params?.avatar_id) && !(f === "voice_sample" && job.params?.voice_id));
+    if (uploads.length) toast("Settings copied. Add your files again (uploads aren't carried over).", "info", 6000);
+    location.hash = `#/create/${job.workflow}${q.toString() ? "?" + q : ""}`;
   }
 
   function bind() {
@@ -301,8 +365,25 @@ export async function project(page, id, setCrumb) {
         } else if (act === "retry") {
           if (!(await confirmAction("Retry failed steps?", "Failed steps are sent again, which can cost money again.", "Retry"))) return;
           await post("retry");
+        } else if (act === "retry-force") {
+          if (!(await confirmAction("Send the request again?", "We couldn't tell whether the provider accepted the first request. Check your provider dashboard first: if it did, sending again pays twice.", "Send again", "danger"))) return;
+          await post("retry", { force: true });
         } else if (act === "resume") {
           await post("resume");
+        } else if (act === "stop") {
+          if (!(await confirmAction("Stop this project?", "It stops before sending anything new. Requests already sent keep running at the provider and may still be billed; Resume later collects them without paying twice.", "Stop"))) return;
+          await post("stop");
+          toast("Stopping after the current step check…", "info");
+        } else if (act === "again") {
+          b.closest("details")?.removeAttribute("open");
+          const copy = await startCopy();
+          if (!copy) return;
+          toast("Started a new take", "good");
+          location.hash = `#/projects/${copy.id}`;
+          return;
+        } else if (act === "edit") {
+          editAsNew();
+          return;
         } else if (act === "delete") {
           if (!(await confirmAction("Delete this project?", "Its files are removed from this computer. This can't be undone.", "Delete", "danger"))) return;
           await api(`/api/jobs/${id}`, { method: "DELETE" });

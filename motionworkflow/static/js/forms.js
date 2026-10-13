@@ -186,6 +186,8 @@ export function renderCreatePage(page, svc) {
   // Restore typed drafts.
   for (const [k, v] of Object.entries(saved)) {
     const el = form.elements[k];
+    if (el instanceof RadioNodeList && k !== "tier" && k !== "voice_id") { el.value = v; continue; }
+    if (el?.type === "checkbox") { el.checked = v === true || v === "true"; continue; }
     if (el && !(el instanceof RadioNodeList) && TEXT_TYPES.has(el.tagName === "TEXTAREA" ? "textarea" : el.tagName === "SELECT" ? "select" : el.type) && v !== "") el.value = v;
   }
   for (const s of svc.sections) for (const f of flat(s.fields)) if (f.type === "file") bindDrop(form, ctx, f.name);

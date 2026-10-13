@@ -385,6 +385,16 @@ def cmd_resume(args):
     return _report(job)
 
 
+def cmd_stop(args):
+    job = _load(args.job)
+    if job.data["state"] not in ("running", "queued"):
+        print("This job isn't running.")
+        return 1
+    job.request_stop()  # the process running it (web app or another mw) stops at its next checkpoint
+    print("Stop requested. Requests already sent may still finish (and be billed); `mw resume` collects them.")
+    return 0
+
+
 def cmd_spend(args):
     report = budget.report()
     print(json.dumps(report, indent=2))
@@ -551,6 +561,10 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("resume", help="continue a job after a restart (never resubmits)")
     s.add_argument("job")
     s.set_defaults(fn=cmd_resume)
+
+    s = sub.add_parser("stop", help="stop a running job at its next checkpoint (resume later)")
+    s.add_argument("job")
+    s.set_defaults(fn=cmd_stop)
 
     s = sub.add_parser("spend", help="estimated spend so far")
     s.set_defaults(fn=cmd_spend)

@@ -267,6 +267,14 @@ def _rows(words: list[str], row_chars: int) -> list[list[str]]:
     return rows
 
 
+_CAPTION_SAFE = str.maketrans({"{": "(", "}": ")", "\\": "/", "<": "‹", ">": "›"})
+
+
+def caption_safe(text: str) -> str:
+    """Characters the subtitle renderer would treat as formatting codes become look-alikes."""
+    return text.translate(_CAPTION_SAFE)
+
+
 def caption_chunks(text: str, start: float, end: float, min_hold: float = 1.2,
                    highlight: str | None = "#FFE500", row_chars: int = 18) -> list[tuple[float, float, str]]:
     """Captions a muted viewer can follow (Take One words.md).
@@ -274,7 +282,7 @@ def caption_chunks(text: str, start: float, end: float, min_hold: float = 1.2,
     Short lines go on screen whole, in two or three big rows, with their key
     word lit; each caption holds at least `min_hold` seconds.
     """
-    words = text.split()
+    words = caption_safe(text).split()
     if not words:
         return []
     phrases = _phrases(words)

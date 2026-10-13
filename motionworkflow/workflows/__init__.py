@@ -5,7 +5,7 @@ import shutil
 import threading
 import traceback
 
-from .. import budget, jobs
+from .. import budget, jobs, validation
 from ..jobs import DONE, ERROR, RUNNING, WAITING, Job
 from . import image, presenter, short, swap, video, voice
 from .common import StepFailed
@@ -31,6 +31,8 @@ def module(name: str):
 
 
 def estimate(workflow: str, params: dict, counts: dict | None = None) -> dict:
+    module(workflow)
+    params = validation.coerce(workflow, dict(params))
     quote = module(workflow).estimate(params, counts or {})
     quote["needs_confirmation"] = budget.needs_confirmation(quote["total"])
     quote["mock"] = any(i.get("mock") for i in quote["items"])
@@ -39,7 +41,14 @@ def estimate(workflow: str, params: dict, counts: dict | None = None) -> dict:
 
 
 def check_start(workflow: str, params: dict, counts: dict, confirmed: bool) -> dict:
-    """Validate cost before a job is created. Raises if over a cap or unconfirmed."""
+    """Validate inputs and cost before a job is created. Cleans `params` in place.
+
+    Raises InputError for something to fix in the form, BudgetExceeded over a cap,
+    or NeedsConfirmation when the person hasn't confirmed a large spend.
+    """
+    module(workflow)
+    validation.coerce(workflow, params)
+    validation.require(workflow, params, counts)
     quote = estimate(workflow, params, counts)
     budget.check_job(quote["total"])
     if quote["needs_confirmation"] and not confirmed:

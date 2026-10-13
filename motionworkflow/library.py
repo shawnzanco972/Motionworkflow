@@ -72,6 +72,10 @@ def add_avatar(src: Path, name: str, consent: bool) -> dict:
     item_id, folder = _new("avatars", name, consent)
     try:
         if suffix in IMAGE_EXT:
+            try:
+                Image.open(src).verify()
+            except Exception:  # noqa: BLE001 - any decoder error means "not an image"
+                raise LibraryError("That file isn't a readable image. Export it again as JPG or PNG.") from None
             with Image.open(src) as im:
                 im = ImageOps.exif_transpose(im).convert("RGB")
                 if min(im.size) < 256:
@@ -84,7 +88,10 @@ def add_avatar(src: Path, name: str, consent: bool) -> dict:
                 width, height = im.size
             data = {"kind": "image", "file": "avatar.jpg", "duration": None}
         else:
-            info = media.probe(src)
+            try:
+                info = media.probe(src)
+            except media.MediaError:
+                raise LibraryError("That video can't be read. Export it again as MP4.") from None
             if not info["has_video"]:
                 raise LibraryError("That file has no video.")
             if info["duration"] < 3:
@@ -114,7 +121,10 @@ def add_voice(src: Path, name: str, consent: bool, transcript: str = "") -> dict
         raise LibraryError("Use an audio file (MP3, WAV, M4A) or a video with your voice.")
     item_id, folder = _new("voices", name, consent)
     try:
-        info = media.probe(src)
+        try:
+            info = media.probe(src)
+        except media.MediaError:
+            raise LibraryError("That recording can't be read. Try MP3, WAV or M4A.") from None
         if not info["has_audio"]:
             raise LibraryError("That file has no sound.")
         # Mono 24 kHz, leading/trailing silence removed, level evened out.
@@ -125,7 +135,8 @@ def add_voice(src: Path, name: str, consent: bool, transcript: str = "") -> dict
                    folder / "voice.wav"])
         seconds = media.probe(folder / "voice.wav")["duration"]
         if seconds < MIN_VOICE:
-            raise LibraryError(f"Only {seconds:.1f} s of speech found; record at least 10 seconds.")
+            raise LibraryError("No clear speech found. Record at least 10 seconds of you talking, close to the mic."
+                               if seconds < 0.5 else f"Only {seconds:.1f} s of speech found; record at least 10 seconds.")
         media.run(["-i", folder / "voice.wav", "-t", f"{min(REF_SECONDS, seconds):.2f}", folder / "reference.wav"])
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)

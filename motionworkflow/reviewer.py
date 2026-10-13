@@ -93,14 +93,15 @@ def contact_sheet(video: Path, out: Path, every: float = 1.0, width: int = 360, 
         frames = sorted(tmp.glob("f*.jpg"))
         if not frames:
             raise ReviewError("Could not read frames from the video.")
-        first = Image.open(frames[0])
-        w, h = first.size
+        with Image.open(frames[0]) as first:
+            w, h = first.size
         rows = -(-len(frames) // columns)
         sheet = Image.new("RGB", (columns * w, rows * h), "black")
         draw = ImageDraw.Draw(sheet)
         for i, path in enumerate(frames):
             x, y = (i % columns) * w, (i // columns) * h
-            sheet.paste(Image.open(path), (x, y))
+            with Image.open(path) as frame:
+                sheet.paste(frame, (x, y))
             draw.rectangle([x, y, x + 54, y + 20], fill="black")
             draw.text((x + 4, y + 4), f"{i * every:.0f}s", fill="white")
         sheet.save(out, quality=88)

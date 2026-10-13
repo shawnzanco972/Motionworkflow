@@ -50,7 +50,7 @@ def get(model_id: str) -> dict:
     for model in models():
         if model["id"] == model_id:
             return model
-    raise CatalogError(f"Unknown model '{model_id}'. Run `mw models` to list them.")
+    raise CatalogError(f"Unknown model '{model_id}'. See Settings → Models & prices (or `mw models`).")
 
 
 def kinds_of(model: dict) -> list[str]:

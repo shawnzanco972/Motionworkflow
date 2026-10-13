@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, budget, catalog, config, genjutsu, jobs, library, media, webhook, workflows
+from . import __version__, budget, catalog, config, genjutsu, jobs, library, media, validation, webhook, workflows
 from .providers.base import AUDIO_EXT, IMAGE_EXT, VIDEO_EXT
 
 UPLOAD_FIELDS = {
@@ -195,6 +195,10 @@ def _save_uploads(uploads: dict[str, list[UploadFile]], tmp: Path) -> dict[str, 
                 shutil.copyfileobj(upload.file, out)
             if dest.stat().st_size > MAX_UPLOAD:
                 raise HTTPException(413, f"{upload.filename} is larger than 500 MB.")
+            try:
+                validation.check_media(dest, field, upload.filename)
+            except validation.InputError as exc:
+                raise HTTPException(400, str(exc)) from None
             saved.setdefault(field, []).append(dest)
     return saved
 
@@ -241,7 +245,7 @@ async def create_job(
         counts = {k: len(v) for k, v in saved.items()}
         counts["avatar_is_video"] = bool(saved.get("avatar") and saved["avatar"][0].suffix.lower() in VIDEO_EXT)
         if workflow == "swap" and saved.get("video"):
-            values["source_seconds"] = round(media.probe(saved["video"][0])["duration"], 2)
+            values["source_seconds"] = round(min(600, media.probe(saved["video"][0])["duration"]), 2)
         try:
             quote = workflows.check_start(workflow, values, counts, confirm)
         except workflows.NeedsConfirmation as exc:

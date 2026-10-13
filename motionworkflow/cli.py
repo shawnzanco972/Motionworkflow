@@ -44,6 +44,12 @@ def _files(**fields) -> dict:
         for p in paths:
             if not p.is_file():
                 raise SystemExit(f"File not found: {p}")
+            try:
+                from .validation import InputError, check_media
+
+                check_media(p, name)
+            except InputError as exc:
+                raise SystemExit(f"Error: {exc}") from None
         out[name] = paths
     return out
 
@@ -87,6 +93,10 @@ def _launch(workflow: str, params: dict, files: dict, args) -> int:
     if workflow == "swap" and files.get("video"):
         params["source_seconds"] = round(media.probe(files["video"][0])["duration"], 2)
     try:
+        from . import validation
+
+        validation.coerce(workflow, params)
+        validation.require(workflow, params, counts)
         quote = workflows.estimate(workflow, params, counts)
     except (ValueError, config.MissingKey) as exc:
         print("Error:", exc)

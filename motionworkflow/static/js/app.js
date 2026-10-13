@@ -50,7 +50,12 @@ function drawShell() {
   const b = st.budget;
   $("#spentToday").textContent = money(b.spent_today);
   $("#dailyBudget").textContent = money(b.daily_budget);
-  $("#spentBar").style.width = `${Math.min(100, (b.spent_today / Math.max(0.01, b.daily_budget)) * 100)}%`;
+  const used = b.spent_today / Math.max(0.01, b.daily_budget);
+  $("#spentBar").style.width = `${Math.min(100, used * 100)}%`;
+  $("#spentBar").parentElement.classList.toggle("near", used >= 0.8 && used < 1);
+  $("#spentBar").parentElement.classList.toggle("over", used >= 1);
+  $(".meter").title = used >= 1 ? "Today's budget is used up: new paid requests wait until tomorrow (UTC) or a higher limit."
+    : used >= 0.8 ? "Over 80% of today's budget is spent." : "See where the money went";
   const names = { fal: "fal", claude: "Claude", replicate: "Replicate", enhancor: "Enhancor" };
   $("#providerDots").innerHTML = Object.entries(names).map(([k, v]) => `<span class="dot ${st.providers[k] ? "on" : ""}" title="${v}: ${st.providers[k] ? "key saved" : "no key"}">${v}</span>`).join("");
   const waiting = st.jobs.awaiting_approval || 0;

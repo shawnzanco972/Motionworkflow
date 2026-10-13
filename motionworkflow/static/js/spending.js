@@ -78,10 +78,26 @@ function table(days) {
     ${[...days].reverse().map((d) => `<tr><td>${day(d.date, { weekday: "short", month: "short", day: "numeric" })}</td><td class="num">${d.count || 0}</td><td class="num">${money(d.usd)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
+const TIER_LABEL = { free: "Cheapest", budget: "Budget", standard: "Standard", premium: "Premium" };
+
+function priceGuide(g) {
+  const cell = (p) => {
+    if (!p) return `<td class="num muted">–</td>`;
+    const models = esc(p.models.filter((m) => m !== "Claude").join(" + "));
+    if (p.same_as_cheaper) return `<td class="num muted" title="Same models as the cheaper tier: ${models}">same</td>`;
+    return `<td class="num ${p.over_cap ? "over-cap" : ""}" title="${models}">${p.usd === 0 ? "Free" : "~" + money(p.usd)}${p.over_cap ? `<span class="sr-only"> (over your per-project limit)</span>${icon("alert")}` : ""}</td>`;
+  };
+  return `<div class="section-title" id="guide" style="margin-top:30px"><h2 class="h2">Price guide</h2><span class="muted small">what typical projects cost, by quality tier</span></div>
+    <div class="table-wrap"><table class="data guide"><thead><tr><th>Project</th>${g.tiers.map((t) => `<th class="num">${TIER_LABEL[t] || t}</th>`).join("")}</tr></thead><tbody>
+    ${g.rows.map((r) => `<tr><td><b>${esc(r.title)}</b><div class="muted small">${esc(r.detail)}</div></td>${g.tiers.map((t) => cell(r.prices[t])).join("")}</tr>`).join("")}
+    </tbody></table></div>
+    <p class="muted small" style="margin:8px 0 0">Priced with every provider key set; without a key a tier falls back to a cheaper or free model. “Cheapest” uses free models where they exist. Hover a price to see the models. ${icon("alert")} marks a project over your per-project limit (${money(g.max_cost_per_job)}): <a href="#/settings/budget">change it</a> or pick a cheaper tier.</p>`;
+}
+
 export async function spending(page, query) {
   const days = Number(query.get("days")) || 14;
   const view = query.get("view") === "table" ? "table" : "chart";
-  const s = await api(`/api/spend?days=${days}`);
+  const [s, guide] = await Promise.all([api(`/api/spend?days=${days}`), api("/api/pricing").catch(() => null)]);
   const lim = s.limits;
   const pctToday = Math.min(100, (s.today / Math.max(0.01, lim.daily_budget)) * 100);
   const maxWf = Math.max(0.0001, ...s.by_workflow.map((x) => x.usd));
@@ -128,8 +144,11 @@ export async function spending(page, query) {
         <td class="num ${r.usd < 0 ? "refund" : ""}">${r.usd < 0 ? "−" + money(-r.usd) : money(r.usd)}</td></tr>`).join("")}</tbody></table></div>
     ${s.recent.length > 40 ? `<p class="muted small">Showing the latest 40. The full ledger is <code>runs/ledger.jsonl</code>, or run <code>mw spend</code>.</p>` : ""}`}
 
+    ${guide ? priceGuide(guide) : ""}
+
     <div class="notice info" style="margin-top:22px">${icon("info")}<span>These are estimates from catalog prices (Settings → Models &amp; prices). Your provider's dashboard is the source of truth for what you were billed.</span></div>`;
 
+  if (query.get("guide")) $("#guide")?.scrollIntoView({ block: "start" });
   if (!empty && view === "chart") {
     const el = $("#dayChart");
     chart(el, s.by_day);

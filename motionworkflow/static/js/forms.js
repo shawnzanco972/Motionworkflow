@@ -5,7 +5,7 @@
 import { $, $$, api, badge, confirmSpend, draft, esc, icon, money, refreshStatus, state, toast } from "./core.js";
 import { addAvatarDialog, addVoiceDialog } from "./modals.js";
 
-const TIERS = [["free", "Free"], ["budget", "Budget"], ["standard", "Standard"], ["premium", "Premium"]];
+const TIERS = [["free", "Cheapest"], ["budget", "Budget"], ["standard", "Standard"], ["premium", "Premium"]];
 const TEXT_TYPES = new Set(["textarea", "text", "number", "select", "range"]);
 
 let uid = 0;

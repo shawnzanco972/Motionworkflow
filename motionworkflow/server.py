@@ -21,7 +21,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
-from . import __version__, budget, catalog, config, genjutsu, jobs, library, media, validation, webhook, workflows
+from . import (__version__, budget, catalog, config, genjutsu, jobs, library, media, pricing, validation, webhook,
+               workflows)
 from .providers.base import AUDIO_EXT, IMAGE_EXT, VIDEO_EXT
 
 UPLOAD_FIELDS = {
@@ -222,6 +223,11 @@ def spend(days: int = 14):
     for row in data["recent"]:
         row.update(titles.get(row.get("job"), {"title": "Deleted project", "workflow": None}))
     return data
+
+
+@app.get("/api/pricing")
+def price_guide():
+    return pricing.guide()
 
 
 @app.get("/api/models")

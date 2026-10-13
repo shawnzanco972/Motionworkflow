@@ -36,7 +36,15 @@ const emptyState = (iconName, title, text, action = "") => `<div class="empty">$
 // -- Home ------------------------------------------------------------------------------
 
 export async function home(page) {
-  const [jobs] = await Promise.all([api("/api/jobs?limit=12"), refreshLibrary()]);
+  const [jobs, guide] = await Promise.all([api("/api/jobs?limit=12"), api("/api/pricing").catch(() => null), refreshLibrary()]);
+  // "from ~$X" on each service, computed from the live price guide.
+  const FROM = { presenter: ["presenter-60-video", " / minute"], short: ["short-slides", " / short"], image: ["image-1", " / image"],
+    video: ["video-5", " / 5 s"], voice: ["voice-1m", " / minute"], swap: ["swap-10", " / 10 s"] };
+  const fromPrice = (id) => {
+    const row = guide?.rows.find((r) => r.id === FROM[id][0]);
+    const usd = row && Math.min(...Object.values(row.prices).filter((p) => p && p.usd > 0).map((p) => p.usd));
+    return usd && Number.isFinite(usd) ? `from ~${money(usd)}${FROM[id][1]}` : BLURBS[id][2];
+  };
   const st = state.status;
   const waiting = jobs.filter((j) => j.state === "awaiting_approval");
   const checks = [
@@ -59,8 +67,8 @@ export async function home(page) {
     </section>
     ${waiting.length ? `<div class="section-title"><h2 class="h2">Waiting for you</h2><a class="btn ghost sm" href="#/projects?f=awaiting_approval">See all</a></div>
       <div class="grid" style="gap:10px">${waiting.slice(0, 3).map((j) => `<a class="approval" style="margin:0;text-decoration:none" href="#/projects/${j.id}">${icon("alert", "lg")}<div class="txt"><b>${esc(j.title)}</b><span>${esc(j.awaiting?.message || j.status)}</span></div><span class="btn primary sm">Review${icon("arrow")}</span></a>`).join("")}</div>` : ""}
-    <div class="section-title"><h2 class="h2">Create</h2></div>
-    <div class="services">${ORDER.map((id) => { const s = SERVICES[id]; const [name, text, price] = BLURBS[id];
+    <div class="section-title"><h2 class="h2">Create</h2><a class="btn ghost sm" href="#/spending?guide=1">${icon("wallet")}Price guide</a></div>
+    <div class="services">${ORDER.map((id) => { const s = SERVICES[id]; const [name, text] = BLURBS[id]; const price = fromPrice(id);
       return `<a class="service" href="#/create/${id}"><span class="si ${s.color}">${icon(s.icon, "lg")}</span><h3>${name}</h3><p>${text}</p><div class="foot"><span>${price}</span><span class="go">Open${icon("arrow")}</span></div></a>`; }).join("")}</div>
     <div class="grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:22px;margin-top:8px" id="homeCols">
       <div><div class="section-title"><h2 class="h2">Recent projects</h2><a class="btn ghost sm" href="#/projects">All projects${icon("arrow")}</a></div>
@@ -504,7 +512,7 @@ export async function settings(page, tab) {
         <div class="field"><label class="label" for="bAsk">Ask me above ($)</label><input class="input" id="bAsk" data-s="MW_CONFIRM_ABOVE" value="${esc(v.MW_CONFIRM_ABOVE)}" inputmode="decimal"><div class="hint">Confirm before starting anything estimated at this or more.</div></div>
       </div>
       <div class="grid cols-2" style="margin-top:18px">
-        <div class="field"><span class="label">Default quality tier</span><div class="seg">${["free", "budget", "standard", "premium"].map((t) => `<input type="radio" name="tierDef" id="td-${t}" value="${t}" ${v.MW_DEFAULT_TIER === t ? "checked" : ""}><label for="td-${t}">${t[0].toUpperCase() + t.slice(1)}</label>`).join("")}</div></div>
+        <div class="field"><span class="label">Default quality tier</span><div class="seg">${["free", "budget", "standard", "premium"].map((t) => `<input type="radio" name="tierDef" id="td-${t}" value="${t}" ${v.MW_DEFAULT_TIER === t ? "checked" : ""}><label for="td-${t}">${t === "free" ? "Cheapest" : t[0].toUpperCase() + t.slice(1)}</label>`).join("")}</div></div>
         <div class="field"><label class="label" for="bPar">Parallel generations</label><input class="input" id="bPar" data-s="MW_MAX_PARALLEL" value="${esc(v.MW_MAX_PARALLEL)}" inputmode="numeric"></div>
       </div>
       <div class="grid cols-2" style="margin-top:18px">

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import math
 import os
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,7 +26,7 @@ KEYS = {
 
 DEFAULTS = {
     "MW_DEFAULT_TIER": "budget",
-    "MW_MAX_COST_PER_JOB": "3.00",
+    "MW_MAX_COST_PER_JOB": "5.00",
     "MW_DAILY_BUDGET": "10.00",
     "MW_CONFIRM_ABOVE": "0.50",
     "MW_MAX_PARALLEL": "3",
@@ -83,7 +85,26 @@ def number(name: str) -> float:
     return value
 
 
+_assume = threading.local()
+
+
+@contextmanager
+def assume_all_keys():
+    """Price things as if every provider key were set (for the price guide). This thread only."""
+    _assume.on = True
+    try:
+        yield
+    finally:
+        _assume.on = False
+
+
+def _assuming() -> bool:
+    return getattr(_assume, "on", False)
+
+
 def has_key(name: str) -> bool:
+    if _assuming() and name in KEYS:
+        return True
     return bool(setting(name))
 
 
@@ -123,5 +144,5 @@ def save_keys(updates: dict[str, str]) -> None:
 def providers_status() -> dict[str, bool]:
     status = {provider: has_key(key) for key, provider in KEYS.items()}
     status["pollinations"] = True  # free, no key
-    status["mock"] = setting("MW_ALLOW_MOCK") not in ("0", "false", "no")
+    status["mock"] = setting("MW_ALLOW_MOCK") not in ("0", "false", "no") and not _assuming()
     return status

@@ -81,6 +81,9 @@ export const SERVICES = {
       const out = [];
       if (!state.library.avatars.length) out.push(`<div class="notice info">${icon("presenter")}<span>Add your avatar once and it's saved for every video.</span></div>`);
       if (!v.voice_id) out.push(`<div class="notice info">${icon("mic")}<span>Using a stock voice. Record 20 seconds of yours to sound like you.</span></div>`);
+      if (v.avatar_id && avatarKind(v) === "image" && Number(v.seconds || 30) >= 30) {
+        out.push(`<div class="notice good">${icon("wallet")}<span>Save money: a 10-20 s video of you looking at the camera is lip-synced instead of animated from a photo, usually about a quarter of the price. <a href="#/spending?guide=1">Price guide</a></span></div>`);
+      }
       return out;
     },
   },

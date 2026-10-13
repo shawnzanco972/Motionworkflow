@@ -95,7 +95,7 @@ Pick **Free / Budget / Standard / Premium** on any form. The app chooses the bes
 ## Money safety
 
 - **Estimate first, always.** Every form shows a live cost estimate; the CLI prints it before running.
-- **Caps.** `MW_MAX_COST_PER_JOB`, `MW_DAILY_BUDGET`, and a confirmation prompt above `MW_CONFIRM_ABOVE` (defaults $3 / $10 / $0.50).
+- **Caps.** `MW_MAX_COST_PER_JOB`, `MW_DAILY_BUDGET`, and a confirmation prompt above `MW_CONFIRM_ABOVE` (defaults $5 / $10 / $0.50).
 - **Approval gates before the expensive part.** Animated shorts stop at the storyboard; drafts stop before the premium/1080p final. Editing or redoing anything withdraws the approval.
 - **Never pays twice.** Request IDs are saved the moment a provider accepts them. Restarting resumes *collection*; a request whose outcome is unclear (timeout) is never auto-resubmitted — you check the provider dashboard and retry with `--force`.
 - Rejected requests are refunded in the local ledger; `mw spend` shows the totals. Your provider bill is the source of truth.

@@ -270,3 +270,42 @@ class MoneyEdgeTests(IsolatedTest):
                 break
             time.sleep(0.05)
         self.assertEqual(jobs.load(job.id).data["state"], "done")
+
+
+class PriceGuideTests(IsolatedTest):
+    def test_guide_prices_real_models_without_keys(self):
+        from motionworkflow import pricing
+
+        guide = TestClient(app, base_url="http://127.0.0.1").get("/api/pricing").json()
+        rows = {r["id"]: r for r in guide["rows"]}
+        self.assertEqual(guide["tiers"], ["free", "budget", "standard", "premium"])
+        for row in guide["rows"]:
+            for tier, p in row["prices"].items():
+                if p:
+                    self.assertFalse(any("Mock" in m for m in p["models"]), (row["id"], tier))
+        self.assertGreater(rows["image-1"]["prices"]["budget"]["usd"], 0)
+        # The tip the guide exists to show: a video avatar is far cheaper than an animated photo.
+        self.assertLess(rows["presenter-60-video"]["prices"]["budget"]["usd"],
+                        rows["presenter-60"]["prices"]["budget"]["usd"] / 2)
+        self.assertFalse(config.has_key("FAL_KEY"))  # the pretend keys never leak out
+        self.assertTrue(config.providers_status()["mock"])
+        self.assertIn("presenter", pricing.starting_prices())
+
+    def test_over_cap_follows_the_setting(self):
+        from motionworkflow import pricing
+
+        self.env(MW_MAX_COST_PER_JOB="0.05")
+        rows = {r["id"]: r for r in pricing.guide()["rows"]}
+        self.assertTrue(rows["presenter-30"]["prices"]["budget"]["over_cap"])
+        self.assertFalse(rows["image-1"]["prices"]["budget"]["over_cap"])
+
+    def test_assumed_keys_are_per_thread(self):
+        import threading
+
+        seen = {}
+        with config.assume_all_keys():
+            t = threading.Thread(target=lambda: seen.update(fal=config.has_key("FAL_KEY")))
+            t.start()
+            t.join()
+            self.assertTrue(config.has_key("FAL_KEY"))
+        self.assertFalse(seen["fal"])  # a job running meanwhile still sees the real keys

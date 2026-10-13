@@ -511,6 +511,7 @@ dialog::backdrop { background: rgb(5 6 10 / .62); backdrop-filter: blur(3px); }
 a.meter { display: block; text-decoration: none; color: inherit; transition: border-color .15s; }
 a.meter:hover { border-color: var(--line-2); }
 .meter-bar.over i { background: var(--bad); }
+.meter-bar.near i { background: var(--warn); }
 .cost-tag { margin-left: auto; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cost-tag .of { font-weight: 400; color: var(--muted); }
 .cost-pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
@@ -562,3 +563,7 @@ a.meter:hover { border-color: var(--line-2); }
 .menu-pop .sub { display: block; color: var(--muted); font-size: 12px; }
 .menu-pop .danger, .menu-pop .danger .icon { color: var(--bad); }
 .menu-pop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+table.data.guide td.num { vertical-align: middle; font-weight: 600; }
+table.data.guide td.num.muted { font-weight: 400; }
+td.over-cap { color: var(--warn); }
+td.over-cap .icon, p .icon { width: 13px; height: 13px; vertical-align: -2px; margin-left: 4px; }

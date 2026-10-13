@@ -5,6 +5,7 @@ whether a credential is present.
 """
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 
@@ -72,10 +73,14 @@ def setting(name: str, default: str | None = None) -> str:
 
 
 def number(name: str) -> float:
+    """A numeric setting. Anything unusable (text, NaN, negative) falls back to the safe default."""
     try:
-        return float(setting(name))
-    except ValueError:
+        value = float(setting(name))
+    except (TypeError, ValueError):
         return float(DEFAULTS[name])
+    if not math.isfinite(value) or value < 0:
+        return float(DEFAULTS[name])
+    return value
 
 
 def has_key(name: str) -> bool:

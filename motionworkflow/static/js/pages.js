@@ -426,8 +426,10 @@ export async function project(page, id, setCrumb) {
     clearTimeout(timer);
     if (!document.body.contains(page) || location.hash.indexOf(id) < 0) return;
     try { await load(); } catch (e) { page.innerHTML = emptyState("alert", "Project not found", "It may have been deleted.", `<a class="btn" href="#/projects">Back to projects</a>`); return; }
-    if (force || (job.updated !== lastUpdated && !dirty)) render();
-    lastUpdated = job.updated;
+    // `updated` has 1-second resolution, so also compare what the page shows.
+    const sig = JSON.stringify([job.updated, job.state, job.active, job.status, job.cost?.spent]);
+    if (force || (sig !== lastUpdated && !dirty)) render();
+    lastUpdated = sig;
     const busy = job.active || job.state === "running" || job.state === "queued";
     if (busy) timer = setTimeout(() => refresh(), 1800);
   }

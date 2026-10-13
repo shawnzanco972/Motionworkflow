@@ -7,6 +7,7 @@ spend your credits or read your keys.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -506,6 +507,33 @@ def get_settings():
     }
 
 
+MONEY_SETTINGS = {"MW_MAX_COST_PER_JOB": "Max per project", "MW_DAILY_BUDGET": "Daily budget",
+                  "MW_CONFIRM_ABOVE": "Ask me above"}
+
+
+def _setting_problem(name: str, value: str) -> str | None:
+    """A plain message if a setting value can't work; empty means "use the default"."""
+    if not value:
+        return None
+    if name in MONEY_SETTINGS or name == "MW_MAX_PARALLEL":
+        label = MONEY_SETTINGS.get(name, "Parallel generations")
+        try:
+            number = float(value)
+        except ValueError:
+            return f"{label} must be a number (got “{value[:20]}”)."
+        if not math.isfinite(number) or number < 0:
+            return f"{label} must be zero or more."
+        if name == "MW_MAX_PARALLEL" and not (1 <= number <= 8 and number == int(number)):
+            return "Parallel generations must be a whole number from 1 to 8."
+        if name in MONEY_SETTINGS and number > 1000:
+            return f"{label} looks too high (over $1,000). Type it again if you mean it, without extra zeros."
+    if name == "MW_DEFAULT_TIER" and value not in catalog.TIERS:
+        return f"Quality tier must be one of: {', '.join(catalog.TIERS)}."
+    if name == "MW_ALLOW_MOCK" and value not in ("0", "1"):
+        return "MW_ALLOW_MOCK must be 0 or 1."
+    return None
+
+
 @app.post("/api/settings")
 async def save_settings(request: Request):
     body = await request.json()
@@ -516,6 +544,11 @@ async def save_settings(request: Request):
         value = str(value).strip()
         if "\n" in value or "\r" in value:
             raise HTTPException(400, f"{name} must be a single line.")
+        if name in MONEY_SETTINGS:
+            value = value.lstrip("$").strip()
+        problem = _setting_problem(name, value)
+        if problem:
+            raise HTTPException(400, problem)
         if value or name not in config.KEYS:
             updates[name] = value
     if updates:

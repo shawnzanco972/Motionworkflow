@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["httpx>=0.27"]
+dev = ["httpx>=0.27", "playwright>=1.40"]
 ffmpeg = ["imageio-ffmpeg>=0.5"]
 
 [project.scripts]
@@ -29,4 +29,4 @@ mw = "motionworkflow.cli:main"
 packages = ["motionworkflow", "motionworkflow.providers", "motionworkflow.workflows"]
 
 [tool.setuptools.package-data]
-motionworkflow = ["models.json", "static/*"]
+motionworkflow = ["models.json", "static/*", "static/js/*"]

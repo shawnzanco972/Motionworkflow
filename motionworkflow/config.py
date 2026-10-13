@@ -91,11 +91,12 @@ _assume = threading.local()
 @contextmanager
 def assume_all_keys():
     """Price things as if every provider key were set (for the price guide). This thread only."""
+    before = getattr(_assume, "on", False)
     _assume.on = True
     try:
         yield
     finally:
-        _assume.on = False
+        _assume.on = before
 
 
 def _assuming() -> bool:

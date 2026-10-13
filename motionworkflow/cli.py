@@ -357,6 +357,7 @@ def cmd_approve(args):
     if not args.yes and sys.stdin.isatty() and input("Approve? [y/N] ").strip().lower() not in ("y", "yes"):
         return 1
     job.approve(awaiting["stage"], args.note or "")
+    job.clear_stop()
     workflows.run(job)
     return _report(job)
 
@@ -364,6 +365,7 @@ def cmd_approve(args):
 def cmd_retry(args):
     job = _load(args.job)
     workflows.retry(job, force=args.force)
+    job.clear_stop()
     workflows.run(job)
     return _report(job)
 
@@ -375,12 +377,14 @@ def cmd_redo(args):
         overrides[str(args.shot)] = {"visual": args.visual, "narration": args.narration, "motion": args.motion,
                                      "text": args.text}
     workflows.redo(job, args.steps, overrides)
+    job.clear_stop()
     workflows.run(job)
     return _report(job)
 
 
 def cmd_resume(args):
     job = _load(args.job)
+    job.clear_stop()
     workflows.run(job)
     return _report(job)
 

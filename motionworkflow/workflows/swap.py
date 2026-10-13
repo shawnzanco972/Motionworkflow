@@ -26,7 +26,7 @@ from __future__ import annotations
 import shutil
 
 from .. import budget, catalog, genjutsu, media
-from ..jobs import Job
+from ..jobs import RUNNING, Job
 from ..providers.base import VIDEO_EXT
 from .common import first_input, first_of_kind, generate, input_paths, line, total
 
@@ -154,10 +154,12 @@ def _genjutsu_prep(job: Job, source, mode: str):
             try:
                 genjutsu.prepare(source, mode, job.params.get("subject") or "person",
                                  on_job=lambda ident: job.update_step("prep", genjutsu_job=ident),
-                                 on_status=job.status)
+                                 # A state is passed, so progress here is not a stop checkpoint: once paid,
+                                 # the prep runs to the end (Stop takes effect right after it).
+                                 on_status=lambda message: job.status(message, RUNNING))
             except genjutsu.GenjutsuError as exc:
                 if not exc.started:
-                    budget.refund(job.id, "genjutsu:" + mode, cost, note="prep did not start")
+                    budget.refund(job.id, "genjutsu:" + mode, cost, note="prep: did not start")
                 job.update_step("prep", state="failed", error=str(exc))
                 raise ValueError(str(exc)) from exc
             job.update_step("prep", state="done")

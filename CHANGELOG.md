@@ -22,7 +22,8 @@
 - Fixed a project page that could stay on "Working" when a job finished within the same second as its last update.
 - The package now ships `static/js` (a non-editable install had no app scripts).
 - `/api/jobs` reads the spend ledger once for the whole list.
-- 36 new tests (93 in total): bad numbers, text and files, odd caption text (braces, emoji, Hebrew), settings validation, bad ids and paths, double approve, edits and delete while running, the daily budget hit mid-run, one failed shot among several, restart resume, no mock and no keys, Stop at every point, duplicate and zip, the price guide. Plus a browser test (Playwright) with an optional axe accessibility audit.
+- From an independent code review: Stop no longer interrupts a paid Genjutsu prep midway (which would have forced paying for it again); Stop in the app now also reaches a job that `mw` is running in another terminal, and a Stop pressed in the instant before a job starts still counts; Run again keeps your script and shot edits; a prep refund cancels the prep charge in the cost breakdown; a failed zip leaves no temp file; project data is copied under a lock while parallel steps update it; the "More actions" menu stays open while a running project updates.
+- 40 new tests (97 in total): bad numbers, text and files, odd caption text (braces, emoji, Hebrew), settings validation, bad ids and paths, double approve, edits and delete while running, the daily budget hit mid-run, one failed shot among several, restart resume, no mock and no keys, Stop at every point, duplicate and zip, the price guide. Plus a browser test (Playwright) with an optional axe accessibility audit.
 
 **Changed defaults**
 - "Free" tier is labelled **Cheapest**: it uses free models where they exist, but voices and avatars always cost a little.

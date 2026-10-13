@@ -305,6 +305,7 @@ export async function project(page, id, setCrumb) {
     const final = (job.outputs || []).find((o) => o.final);
     const busy = job.active || job.state === "running" || job.state === "queued";
     const [stTitle, stText] = STAGE_TEXT[job.awaiting?.stage] || ["Needs your approval", ""];
+    const menuOpen = !!$("details.menu[open]", page);  // keep the menu open across live updates
     page.innerHTML = `
       <div class="page-head"><div class="titles">
         <div class="eyebrow">${icon(w.icon)}${w.label}</div>
@@ -328,6 +329,7 @@ export async function project(page, id, setCrumb) {
       ${job.state === "stopped" && !job.active ? `<div class="approval" style="border-color:var(--line-2);background:var(--surface)">${icon("stop", "xl")}<div class="txt"><b>Stopped</b><span>Nothing new is sent while it's stopped. Requests already sent may still finish at the provider (and be billed); Resume collects them without paying twice.</span></div><button class="btn primary" data-act="resume">${icon("play")}Resume</button></div>` : ""}
       ${job.warning ? `<div class="notice warn" style="margin-bottom:18px">${icon("info")}<span>${esc(job.warning)}</span></div>` : ""}
       <div class="detail"><div>${mainMedia()}${scriptEditor()}${storyboard()}${review()}${gallery()}</div><aside>${side()}</aside></div>`;
+    if (menuOpen) $("details.menu", page)?.setAttribute("open", "");
     bind();
   }
 

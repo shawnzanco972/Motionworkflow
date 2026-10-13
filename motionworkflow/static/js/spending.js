@@ -95,7 +95,7 @@ function priceGuide(g) {
 }
 
 export async function spending(page, query) {
-  const days = Number(query.get("days")) || 14;
+  const days = Math.max(7, Math.min(90, Math.round(Number(query.get("days")) || 14)));  // the server's range
   const view = query.get("view") === "table" ? "table" : "chart";
   const [s, guide] = await Promise.all([api(`/api/spend?days=${days}`), api("/api/pricing").catch(() => null)]);
   const lim = s.limits;

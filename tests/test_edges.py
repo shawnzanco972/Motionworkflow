@@ -197,9 +197,8 @@ class ServerEdgeTests(IsolatedTest):
     def test_without_mock_and_keys_the_message_says_what_to_do(self):
         self.env(MW_ALLOW_MOCK="0")
         catalog.reload()
-        r = self.create("image", {"prompt": "x", "tier": "budget"})
-        if r.status_code == 200:  # a free provider (Pollinations) may still serve images
-            self.assertNotEqual(r.json()["cost"]["planned"][0]["model"].split(":")[0], "mock")
+        quote = self.client.post("/api/estimate", json={"workflow": "image", "params": {"prompt": "x"}}).json()
+        self.assertEqual(quote["items"][0]["model"], "pollinations:flux")  # free images still work, no mock
         r = self.create("video", {"prompt": "x", "tier": "budget"})
         self.assertEqual(r.status_code, 400)
         self.assertRegex(r.json()["detail"], "KEY|key")
@@ -309,3 +308,45 @@ class PriceGuideTests(IsolatedTest):
             t.join()
             self.assertTrue(config.has_key("FAL_KEY"))
         self.assertFalse(seen["fal"])  # a job running meanwhile still sees the real keys
+
+
+class ReviewFixTests(IsolatedTest):
+    def test_stop_from_the_app_reaches_a_job_run_elsewhere(self):
+        job = jobs.create("image", {"prompt": "x", "model": "mock:image"})
+        job.status("Working", "running")  # e.g. `mw resume` in another terminal
+        self.assertEqual(workflows.stop(job), "stopped")
+        self.assertTrue(job.stop_requested())  # the other process sees the flag at its next check
+        workflows.run(job)  # that process reaching a checkpoint
+        self.assertEqual(job.data["state"], "stopped")
+        self.assertFalse(job.stop_requested())
+
+    def test_stop_pressed_before_the_thread_starts_still_stops(self):
+        job = jobs.create("image", {"prompt": "x", "model": "mock:image"})
+        workflows.stop(job)  # queued, not active yet
+        workflows.run(job)
+        self.assertEqual(job.data["state"], "stopped")
+        workflows.start(job, background=False)  # Resume is an explicit start: it clears the flag
+        self.assertEqual(job.data["state"], "done")
+
+    def test_run_again_keeps_the_script_and_shot_edits(self):
+        client = TestClient(app, base_url="http://127.0.0.1")
+        params = {"idea": "a cat CEO", "shots": 2, "mode": "slideshow", "image_model": "mock:image"}
+        src = jobs.create("short", params)
+        workflows.run(src)
+        workflows.redo(src, ["key-1"], {"1": {"visual": "the cat on a yacht"}})
+        workflows.run(src)
+        copy = client.post(f"/api/jobs/{src.id}/duplicate", json={}).json()
+        self.assertEqual(copy["params"]["overrides"]["1"]["visual"], "the cat on a yacht")
+        new = jobs.load(copy["id"])
+        self.assertEqual(json.loads(new.path("plan.json").read_text()), json.loads(src.path("plan.json").read_text()))
+        for _ in range(200):  # let the copy finish before the test folder goes
+            if not workflows.is_active(new.id) and new.data["state"] in ("done", "error"):
+                break
+            time.sleep(0.05)
+        self.assertEqual(new.data["state"], "done", new.data.get("error"))
+
+    def test_a_prep_refund_cancels_the_prep_charge(self):
+        budget.charge("j1", "genjutsu:depth", 0.3, note="prep")
+        budget.refund("j1", "genjutsu:depth", 0.3, note="prep: did not start")
+        self.assertEqual({budget.step_of(r["note"]) for r in budget.job_entries("j1")}, {"prep"})
+        self.assertAlmostEqual(budget.spent_on_job("j1"), 0.0)

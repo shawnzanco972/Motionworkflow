@@ -26,6 +26,14 @@ class IsolatedTest(unittest.TestCase):
         catalog.reload()
 
     def tearDown(self):
+        import time
+
+        from motionworkflow import workflows
+
+        for _ in range(100):  # let background jobs finish before their folder is deleted
+            if not workflows._active:
+                break
+            time.sleep(0.05)
         for key in KEY_NAMES:
             os.environ.pop(key, None)
         os.environ.update(self._saved_env)

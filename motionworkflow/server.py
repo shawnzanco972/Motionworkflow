@@ -123,7 +123,7 @@ def _cost(job: jobs.Job, data: dict, ledger: list[dict]) -> dict:
         key = budget.step_of(row.get("note", ""))
         per_step[key] = per_step.get(key, 0) + row.get("usd", 0)
     steps = []
-    for key, step in job.data.get("steps", {}).items():
+    for key, step in (data.get("steps") or {}).items():
         steps.append({"key": key, "label": step.get("label") or key, "model": step.get("model"),
                       "state": step.get("state"), "estimate": step.get("estimate"),
                       "spent": round(per_step.pop(key, 0.0), 4)})
@@ -400,11 +400,7 @@ async def duplicate(job_id: str, request: Request):
     """A new project with the same inputs and settings (your edits to the script or shots included)."""
     job = _job(job_id)
     body = await request.json() if (await request.body()) else {}
-    values = json.loads(json.dumps(job.params))
-    values.pop("overrides", None)
-    plan = job.data.get("plan") or {}
-    if job.data["workflow"] == "presenter" and plan.get("lines") and body.get("keep_script", True):
-        values["script"] = "\n".join(line["text"] for line in plan["lines"])  # reuse the reviewed words
+    values = json.loads(json.dumps(job.params))  # keeps your line and shot edits ("overrides")
     files = {field: [job.folder / rel for rel in rels] for field, rels in job.data.get("inputs", {}).items()}
     files = {k: [p for p in v if p.exists()] for k, v in files.items()}
     counts = {k: len(v) for k, v in files.items() if v}
@@ -416,6 +412,10 @@ async def duplicate(job_id: str, request: Request):
     except (ValueError, budget.BudgetExceeded, config.MissingKey) as exc:
         raise HTTPException(400, str(exc)) from None
     copy = jobs.create(job.data["workflow"], values, {k: v for k, v in files.items() if v})
+    plan = job.path("plan.json")
+    if plan.exists():  # same script and shots (your edits apply on top), so only the media is new
+        shutil.copyfile(plan, copy.path("plan.json"))
+        copy.add_output(copy.path("plan.json"), "Script (plan.json)", "file")
     copy.data["estimate"] = quote
     copy.data["duplicate_of"] = job.id
     copy.save()
@@ -432,9 +432,13 @@ def download_all(job_id: str):
         raise HTTPException(404, "Nothing to download yet.")
     fd, tmp = tempfile.mkstemp(suffix=".zip", dir=config.RUNS)
     os.close(fd)
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:  # media is already compressed
-        for o in outputs:
-            zf.write(job.folder / o["path"], o["path"])
+    try:
+        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:  # media is already compressed
+            for o in outputs:
+                zf.write(job.folder / o["path"], o["path"])
+    except BaseException:
+        os.unlink(tmp)
+        raise
     name = re.sub(r"[^A-Za-z0-9]+", "-", _title(job)).strip("-")[:50] or job.id
     return FileResponse(tmp, filename=f"{name}.zip", media_type="application/zip",
                         background=BackgroundTask(os.unlink, tmp))
@@ -532,7 +536,7 @@ def _setting_problem(name: str, value: str) -> str | None:
         if name == "MW_MAX_PARALLEL" and not (1 <= number <= 8 and number == int(number)):
             return "Parallel generations must be a whole number from 1 to 8."
         if name in MONEY_SETTINGS and number > 1000:
-            return f"{label} looks too high (over $1,000). Type it again if you mean it, without extra zeros."
+            return f"{label} looks too high: the most it can be here is $1,000. Edit .env directly if you really need more."
     if name == "MW_DEFAULT_TIER" and value not in catalog.TIERS:
         return f"Quality tier must be one of: {', '.join(catalog.TIERS)}."
     if name == "MW_ALLOW_MOCK" and value not in ("0", "1"):

@@ -155,7 +155,8 @@ class Job:
             self.save()
 
     def public(self) -> dict:
-        data = {k: v for k, v in self.data.items() if k != "log"}
+        with _lock(self.id):  # a deep copy, so parallel steps can't change it while it's sent
+            data = json.loads(json.dumps({k: v for k, v in self.data.items() if k != "log"}))
         data["approvals"] = self.approvals()
         data["log"] = self.data.get("log", [])[-30:]
         data["outputs"] = [dict(o, url=f"/files/{self.id}/{o['path']}") for o in self.data.get("outputs", [])]

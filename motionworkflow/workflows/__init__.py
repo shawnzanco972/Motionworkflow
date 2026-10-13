@@ -63,7 +63,6 @@ def run(job: Job) -> Job:
             return job
         _active.add(job.id)
     try:
-        job.clear_stop()
         job.data.pop("error", None)
         job.status("Working", RUNNING)
         module(job.data["workflow"]).run(job)
@@ -89,16 +88,19 @@ def run(job: Job) -> Job:
 
 def stop(job: Job) -> str:
     """Stop a job at its next checkpoint. Returns what happened, for the UI."""
+    if not is_active(job.id) and job.data.get("state") not in (RUNNING, "queued"):
+        raise ValueError("This project isn't running.")
+    # Always the flag file: the job may be running here, in `mw` in another terminal, or be about to start.
+    job.request_stop()
     if is_active(job.id):
-        job.request_stop()
         return "stopping"
-    if job.data.get("state") in (RUNNING, "queued"):  # left over from a closed app
-        job.status("Stopped.", STOPPED)
-        return "stopped"
-    raise ValueError("This project isn't running.")
+    job.status("Stopped.", STOPPED)  # nothing here is running it (left over, or run by the CLI, which stops at its next check)
+    return "stopped"
 
 
 def start(job: Job, background: bool = True) -> Job:
+    """Start or continue a job on the person's say-so (create, approve, retry, redo, resume)."""
+    job.clear_stop()
     if background:
         threading.Thread(target=run, args=(job,), daemon=True, name=f"job-{job.id}").start()
         return job

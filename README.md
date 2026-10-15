@@ -37,6 +37,8 @@ cd Motionworkflow
 
 Windows: use WSL2 and the commands above, or double-click `start.bat` (needs Python and ffmpeg on PATH).
 
+**On your phone, or without installing anything:** open it in GitHub Codespaces (https://codespaces.new/shawnzanco972/Motionworkflow) and use it from the browser. Step by step: [docs/PHONE.md](docs/PHONE.md).
+
 ### Add keys when you have them
 
 Open **Settings** in the app (or edit `.env`). One key goes a long way:

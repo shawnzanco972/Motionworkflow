@@ -33,6 +33,18 @@ class ServerTests(IsolatedTest):
         r = self.client.post("/api/settings", json={}, headers={"origin": "https://evil.example"})
         self.assertEqual(r.status_code, 403)
 
+    def test_codespace_hosts_only_when_allowed(self):
+        h = {"host": "me-abc-8770.app.github.dev"}
+        self.assertEqual(self.client.get("/api/status", headers=h).status_code, 403)
+        self.env(MW_ALLOWED_HOSTS=".app.github.dev")
+        self.assertEqual(self.client.get("/api/status", headers=h).status_code, 200)
+        for bad in ("app.github.dev", "evil.app.github.dev.example.com", "app.github.dev.evil.com"):
+            self.assertEqual(self.client.get("/api/status", headers={"host": bad}).status_code, 403, bad)
+        same = {**h, "origin": "https://me-abc-8770.app.github.dev"}
+        self.assertEqual(self.client.post("/api/settings", json={}, headers=same).status_code, 200)
+        other = {**h, "origin": "https://attacker-8770.app.github.dev"}
+        self.assertEqual(self.client.post("/api/settings", json={}, headers=other).status_code, 403)
+
     def test_create_image_job_and_download(self):
         r = self.client.post("/api/jobs", data={"workflow": "image", "params": json.dumps({"prompt": "cat", "model": "mock:image"})})
         self.assertEqual(r.status_code, 200, r.text)

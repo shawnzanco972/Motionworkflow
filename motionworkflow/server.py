@@ -54,16 +54,27 @@ async def lifespan(_app):
 app = FastAPI(title="MotionWorkflow", version=__version__, lifespan=lifespan)
 
 
+def _trusted_host(host: str) -> bool:
+    """Localhost, or a host ending in one of MW_ALLOWED_HOSTS (e.g. ".app.github.dev" in a Codespace,
+    whose forwarded ports are private to the signed-in owner)."""
+    if host in LOCAL_HOSTS or host == "testserver":
+        return True
+    suffixes = [s.strip().lower() for s in config.setting("MW_ALLOWED_HOSTS").split(",") if s.strip()]
+    host = host.lower()
+    return any(s.startswith(".") and host.endswith(s) and len(host) > len(s) for s in suffixes)
+
+
 @app.middleware("http")
 async def local_only(request: Request, call_next):
     if config.setting("MW_ALLOW_REMOTE") != "1":
         host = (request.headers.get("host") or "").rsplit(":", 1)[0]
-        if host not in LOCAL_HOSTS and host != "testserver":
+        if not _trusted_host(host):
             return JSONResponse({"detail": "MotionWorkflow only answers on localhost."}, status_code=403)
         origin = request.headers.get("origin")
         if request.method not in ("GET", "HEAD") and origin:
             origin_host = origin.split("://", 1)[-1].rsplit(":", 1)[0]
-            if origin_host not in LOCAL_HOSTS:
+            # A trusted host may only be written to from a page it served itself.
+            if origin_host not in LOCAL_HOSTS and origin_host.lower() != host.lower():
                 return JSONResponse({"detail": "Cross-site request blocked."}, status_code=403)
     return await call_next(request)
 

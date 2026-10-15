@@ -11,7 +11,7 @@ from pathlib import Path
 from motionworkflow import catalog, config, jobs
 
 KEY_NAMES = [*config.KEYS, "MW_DEFAULT_TIER", "MW_CONFIRM_ABOVE", "MW_DAILY_BUDGET", "MW_MAX_COST_PER_JOB",
-             "MW_ALLOW_MOCK", "MW_MAX_PARALLEL", "ENHANCOR_WEBHOOK_URL"]
+             "MW_ALLOW_MOCK", "MW_MAX_PARALLEL", "ENHANCOR_WEBHOOK_URL", "MW_ALLOWED_HOSTS", "MW_ALLOW_REMOTE"]
 
 
 class IsolatedTest(unittest.TestCase):

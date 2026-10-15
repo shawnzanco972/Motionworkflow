@@ -468,7 +468,7 @@ export async function assets(page) {
   $$("[data-add]", page).forEach((b) => (b.onclick = async () => { const item = b.dataset.add === "avatar" ? await addAvatarDialog() : await addVoiceDialog(); if (item) assets(page); }));
   $$("[data-del]", page).forEach((b) => (b.onclick = async () => {
     if (!(await confirmAction("Delete this item?", "Projects that already used it keep their copy.", "Delete", "danger"))) return;
-    await api(`/api/library/${b.dataset.del}`, { method: "DELETE" });
+    try { await api(`/api/library/${b.dataset.del}`, { method: "DELETE" }); } catch (e) { toast(e.message, "bad"); return; }
     await refreshStatus();
     assets(page);
   }));
@@ -501,7 +501,9 @@ export async function settings(page, tab) {
       const keys = {};
       $$("[data-key]", body).forEach((i) => { if (i.value.trim()) keys[i.dataset.key] = i.value.trim(); });
       if (!Object.keys(keys).length) { toast("Paste a key first.", "info"); return; }
-      await api("/api/settings", { json: { keys } });
+      try {
+        await api("/api/settings", { json: { keys } });
+      } catch (e) { toast(e.message, "bad", 7000); return; }
       await Promise.all([refreshStatus(), refreshModels()]);
       toast("Keys saved", "good");
       settings(page, "keys");
